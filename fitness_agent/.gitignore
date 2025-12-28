@@ -1,0 +1,11 @@
+# Security: Never push keys!
+.env
+
+# Python junk
+__pycache__/
+*.pyc
+
+# Virtual Environment (heavy folder)
+.venv/
+venv/
+env/
