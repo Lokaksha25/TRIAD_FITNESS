@@ -14,13 +14,6 @@ Current fitness and wellness solutions are fragmented. Training apps, nutrition 
 * *🛡️ Dynamic Regression:* The Agent automatically *downgrades* workout intensity if the user is stressed or sleep-deprived to prevent injury.
 * *🤖 Multi-Agent Orchestration:* A team of specialized AI agents (Trainer, Nutritionist, Wellness) debate and agree on the best plan for today.
 
-
-##  Key Features
-* *👁️ Real-Time Form Analysis:* Uses *Computer Vision (MediaPipe)* to count reps and analyze squat depth/form via webcam in real-time.
-* *🧠 Context-Aware Memory:* Uses *Vector RAG (Pinecone)* to remember your past workouts, injuries, and nutrition status (e.g., "Fasted" or "Low Sleep").
-* *🛡️ Dynamic Regression:* The Agent automatically *downgrades* workout intensity if the user is stressed or sleep-deprived to prevent injury.
-* *🤖 Multi-Agent Orchestration:* A team of specialized AI agents (Trainer, Nutritionist, Wellness) debate and agree on the best plan for today.
-
 ##  Target Audience / TAM : 
 
 - **The High-Performance Professional:** Needs peak cognitive function and a plan that adapts instantly to limited sleep or high stress.
