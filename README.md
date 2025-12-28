@@ -25,7 +25,7 @@ We use a **Hierarchical "Hub and Spoke" Agentic Workflow** to mimic a team of sp
 
 ### The Agents
 1.  **Manager Agent (The Head Coach):** Interfaces with the user and resolves conflicts. It synthesizes inputs from all specialists into one cohesive Daily Briefing.
-2.  **Wellness Agent (Recovery Specialist):** Analyzes biometrics (Sleep, HRV, RHR) to determine a "Readiness Score" and set intensity caps (the safety brake).
+2.  **Wellness Agent (Recovery Specialist):** Analyzes simulated biometrics (Sleep, HRV, RHR) to determine a "Readiness Score" and set intensity caps (the safety brake).
 3.  **Physical Trainer Agent (Strength Coach):** Designs specific workout protocols (Hypertrophy/Endurance) tailored to the user's goals but strictly adhering to the Wellness Agent's intensity caps.
 4.  **Nutrition Agent (Dietician/Chef):** Calculates dynamic caloric/macro needs based *specifically* on the workout assigned by the Trainer.
 
