@@ -197,6 +197,13 @@ class PushupAnalysisTool(BaseTool):
                 self._draw_progress_bar(frame, avg_angle, PUSH_DOWN_THRESHOLD, PUSH_UP_THRESHOLD)
 
             cv2.imshow('Pushup Analysis', frame)
+            
+            # Check shared stop signal + 'q' key
+            import backend.session_state as session_state
+            if session_state.should_stop():
+                print("🛑 Stop signal received in Pushup Tool.")
+                break
+
             if cv2.waitKey(10) & 0xFF == ord('q'): break
 
         cap.release()

@@ -450,6 +450,14 @@ const TrainerView: React.FC = () => {
     }
   };
 
+  const stopSession = async () => {
+    try {
+        await fetch('/api/trainer/stop', { method: 'POST' });
+    } catch (err) {
+        console.error("Failed to stop session:", err);
+    }
+  };
+
   // Parse the workout plan
   const parsedPlan = workoutPlan ? parseWorkoutPlan(workoutPlan) : null;
 
@@ -566,23 +574,23 @@ const TrainerView: React.FC = () => {
                             <option value="Squat">Squat</option>
                             <option value="Pushup">Pushup</option>
                         </select>
-                        <button 
-                            onClick={startSession}
-                            disabled={loading}
-                            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold text-white transition-colors ${loading ? 'bg-stone-400 cursor-not-allowed' : 'bg-slate-800 hover:bg-slate-700'}`}
-                        >
-                            {loading ? (
-                                <>
-                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                    <span>Running...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Play size={16} fill="currentColor" />
-                                    <span>Start Session</span>
-                                </>
-                            )}
-                        </button>
+                        {loading ? (
+                             <button 
+                                onClick={stopSession}
+                                className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold text-white transition-colors bg-red-600 hover:bg-red-700 animate-pulse"
+                            >
+                                <div className="w-3 h-3 bg-white rounded-sm"></div>
+                                <span>End Session</span>
+                            </button>
+                        ) : (
+                            <button 
+                                onClick={startSession}
+                                className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold text-white transition-colors bg-slate-800 hover:bg-slate-700"
+                            >
+                                <Play size={16} fill="currentColor" />
+                                <span>Start Session</span>
+                            </button>
+                        )}
                     </div>
                 </div>
 

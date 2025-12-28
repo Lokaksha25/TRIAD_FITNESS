@@ -196,6 +196,13 @@ class SquatAnalysisTool(BaseTool):
                 # cv2.putText(frame, f"Sprd: {ankle_spread:.2f} KnDiff: {knee_height_diff:.2f}", (200, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
 
             cv2.imshow('Squat Analysis', frame)
+            
+            # Check shared stop signal + 'q' key
+            import backend.session_state as session_state
+            if session_state.should_stop():
+                print("🛑 Stop signal received in Squat Tool.")
+                break
+                
             if cv2.waitKey(10) & 0xFF == ord('q'): break
 
         cap.release()

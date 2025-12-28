@@ -2,9 +2,14 @@ from dotenv import load_dotenv
 import os
 
 # Load environment variables
-# Look for .env.local in the parent directory (project root)
-load_dotenv(dotenv_path='../.env.local')
-load_dotenv() # Also load any .env in current directory if it exists
+from pathlib import Path
+# Robustly load .env from the backend directory
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path)
+# Also try loading from root if not found or for overrides
+load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
+
+from fastapi.middleware.cors import CORSMiddleware
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel
@@ -26,7 +31,9 @@ import json
 from pinecone import Pinecone
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from groq import Groq
+from groq import Groq
 from backend.tools.memory_store import get_exercise_memory, get_nutrition_memory, get_wellness_memory, format_exercise_context, format_wellness_context
+import backend.session_state as session_state
 
 def extract_json(text):
     """
@@ -57,6 +64,21 @@ def extract_json(text):
     return None
 
 app = FastAPI()
+
+# Input Validation: Allow all origins for development to fix CORS issues
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "*"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class SessionRequest(BaseModel):
     exercise_type: str
@@ -712,7 +734,7 @@ async def get_timeline():
         return {"logs": []}
 
 @app.post("/api/trainer/start")
-async def start_training_session(request: SessionRequest):
+def start_training_session(request: SessionRequest):
     exercise_choice = request.exercise_type
     
     # Check if API keys are set
@@ -722,6 +744,9 @@ async def start_training_session(request: SessionRequest):
 
     if not os.environ.get("PINECONE_API_KEY"):
         raise HTTPException(status_code=500, detail="PINECONE_API_KEY not found in environment variables.")
+
+    # reset stop signal
+    session_state.clear_stop_signal()
         
     try:
         # 1. Initialize Agents & Tasks
@@ -778,6 +803,34 @@ async def start_training_session(request: SessionRequest):
             summary = data.get("summary", result_text)
             recommendations = data.get("recommendations", "")
             form_rating = data.get("form_rating", 0)
+            
+            # Save to Pinecone via Memory Store
+            from backend.tools.memory_store import save_agent_memory
+            
+            # Create a rich text representation for the memory
+            memory_text = f"Completed {exercise_choice} session. Total Reps: {total_reps}. Rating: {form_rating}/10. Issues: {', '.join(detected_issues)}. Summary: {summary}"
+            
+            log_id = save_agent_memory(
+                agent_type="physical_trainer",
+                content=memory_text,
+                metadata={
+                    "type": "exercise_log",
+                    "exercise": exercise_choice,
+                    "reps": total_reps, 
+                    "rating": form_rating,
+                    "issues": detected_issues
+                }
+            )
+            
+            return {
+                "status": "success",
+                "plan": result_text,
+                "detected_issues": detected_issues,
+                "total_reps": total_reps,
+                "save_status": "success",
+                "log_id": log_id
+            }
+
             
         except (json.JSONDecodeError, ValueError):
             print("⚠️ Warning: Agent output was not valid JSON. Falling back to text parsing.")
@@ -1010,6 +1063,14 @@ async def get_manager_conflicts():
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/trainer/stop")
+async def stop_training_session():
+    """Signals the running trainer session to stop."""
+    session_state.set_stop_signal()
+    print("🛑 Stop signal sent to trainer session.")
+    return {"status": "success", "message": "Stop signal sent"}
 
 if __name__ == "__main__":
     import uvicorn
