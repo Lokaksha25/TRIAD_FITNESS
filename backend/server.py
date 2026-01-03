@@ -108,6 +108,11 @@ class WellnessRequest(BaseModel):
     hrv: int = 50  # Heart Rate Variability in ms
     rhr: int = 65  # Resting Heart Rate in bpm
 
+class WeeklyPlanRequest(BaseModel):
+    """Request for weekly training plan generation"""
+    user_id: str = "user_123"
+    force_regenerate: bool = False  # Override cache and force new plan generation
+
 def format_trainer_chat_response(trainer_data, log_id):
     """
     Wrapper to format the trainer's raw output into a chat-friendly JSON object.
@@ -472,61 +477,515 @@ def get_user_profile() -> dict:
 def get_wellness_data() -> dict:
     """Fetch the latest wellness data from Pinecone (stored by wellness agent)."""
     try:
-        from tools.memory_store import _get_index, _get_embeddings
+        from tools.memory_store import get_wellness_memory
         
-        index = _get_index()
-        embeddings = _get_embeddings()
+        # Use the proper wellness memory retrieval function
+        wellness_logs = get_wellness_memory(query="recent wellness readiness", top_k=1)
         
-        # Query for wellness data
-        query_vector = embeddings.embed_query("wellness health sleep stress HRV cortisol biometrics")
-        
-        results = index.query(
-            vector=query_vector,
-            top_k=3,
-            include_metadata=True
-        )
-        
+        # Default values
         wellness_data = {
-            "sleep_score": 70,  # defaults
+            "sleep_score": 70,
             "stress_level": "Moderate",
             "hrv": "Normal",
             "readiness": "Good"
         }
         
-        # Find wellness type entries
-        for match in results.get('matches', []):
-            meta = match.get('metadata', {})
-            text = meta.get('text', '').lower()
+        if wellness_logs and len(wellness_logs) > 0:
+            latest = wellness_logs[0]
             
-            # Extract sleep score
-            if 'sleep' in text:
-                import re
-                sleep_match = re.search(r'sleep[:\s]*(\d+)', text, re.IGNORECASE)
-                if sleep_match:
-                    wellness_data["sleep_score"] = int(sleep_match.group(1))
+            # Convert sleep hours to score (0-10h -> 0-100 score)
+            sleep_hours = latest.get('sleep_hours', 7.0)
+            wellness_data["sleep_score"] = int(min(100, (sleep_hours / 10) * 100))
             
-            # Extract stress level
-            if 'stress' in text.lower():
-                if 'high' in text.lower():
-                    wellness_data["stress_level"] = "High"
-                elif 'low' in text.lower():
-                    wellness_data["stress_level"] = "Low"
+            # Convert HRV to category
+            hrv_value = latest.get('hrv', 50)
+            if hrv_value >= 65:
+                wellness_data["hrv"] = "High"
+            elif hrv_value >= 45:
+                wellness_data["hrv"] = "Normal"
+            else:
+                wellness_data["hrv"] = "Low"
             
-            # Extract HRV
-            if 'hrv' in text.lower():
-                if 'low' in text.lower():
-                    wellness_data["hrv"] = "Low"
-                    
-            # Check readiness
-            if 'compromised' in text.lower() or 'poor' in text.lower():
+            # Convert RHR to stress level (inverse relationship)
+            rhr_value = latest.get('rhr', 65)
+            if rhr_value <= 58:
+                wellness_data["stress_level"] = "Low"
+            elif rhr_value <= 68:
+                wellness_data["stress_level"] = "Moderate"
+            else:
+                wellness_data["stress_level"] = "High"
+            
+            # Convert readiness score to category
+            readiness_score = latest.get('readiness_score', 70)
+            if readiness_score >= 80:
+                wellness_data["readiness"] = "Good"
+            elif readiness_score >= 60:
+                wellness_data["readiness"] = "Moderate"
+            else:
                 wellness_data["readiness"] = "Compromised"
+            
+            print(f"📊 Fetched wellness data from latest log:")
+            print(f"   Sleep: {sleep_hours}h (score: {wellness_data['sleep_score']})")
+            print(f"   HRV: {hrv_value}ms ({wellness_data['hrv']})")
+            print(f"   RHR: {rhr_value}bpm (stress: {wellness_data['stress_level']})")
+            print(f"   Readiness: {readiness_score}/100 ({wellness_data['readiness']})")
+        else:
+            print(f"⚠️ No wellness logs found, using defaults: {wellness_data}")
         
-        print(f"📊 Fetched wellness data: {wellness_data}")
         return wellness_data
         
     except Exception as e:
-        print(f"Error fetching wellness data: {e}")
+        print(f"❌ Error fetching wellness data: {e}")
         return {"sleep_score": 70, "stress_level": "Moderate", "hrv": "Normal", "readiness": "Good"}
+
+
+def detect_injury_from_history(user_id: str = "user_123") -> bool:
+    """
+    Detect if user has an injury based on wellness and exercise history.
+    
+    Checks for:
+    - Low readiness scores (<40) for 3+ consecutive analyses
+    - Poor form ratings (<5) with recurring issues
+    - Keywords like 'injury' or 'pain' in wellness metadata
+    
+    Returns:
+        True if injury detected, False otherwise
+    """
+    try:
+        from tools.memory_store import get_wellness_memory, get_exercise_memory
+        
+        # Check wellness data for low readiness
+        wellness_logs = get_wellness_memory(query="recent wellness readiness", top_k=5)
+        low_readiness_count = 0
+        
+        for log in wellness_logs:
+            readiness = log.get('readiness_score', 100)
+            if readiness < 40:
+                low_readiness_count += 1
+            
+            # Check for injury keywords in summary
+            summary = log.get('executive_summary', '').lower()
+            text = log.get('text', '').lower()
+            if 'injury' in summary or 'injury' in text or 'pain' in summary or 'pain' in text:
+                print(f"🚨 Injury keyword detected in wellness log")
+                return True
+        
+        if low_readiness_count >= 3:
+            print(f"🚨 Critical fatigue detected: {low_readiness_count} low readiness scores")
+            return True
+        
+        # Check exercise data for form issues
+        exercise_logs = get_exercise_memory(query="recent workout form", top_k=5)
+        poor_form_count = 0
+        
+        for log in exercise_logs:
+            rating = log.get('rating', 10)
+            issues = log.get('issues', [])
+            
+            if rating < 5 and len(issues) > 0:
+                poor_form_count += 1
+        
+        if poor_form_count >= 3:
+            print(f"⚠️ Recurring form issues detected: {poor_form_count} poor ratings")
+            return True
+        
+        print(f"✅ No injuries detected")
+        return False
+        
+    except Exception as e:
+        print(f"❌ Error detecting injury: {e}")
+        return False
+
+
+def is_plan_valid(plan_metadata: dict) -> bool:
+    """
+    Check if a cached training plan is still valid.
+    
+    Plan is valid if:
+    - Created less than 5 weeks ago (35 days)
+    - No injury was detected when checking history
+    
+    Returns:
+        True if plan is valid and can be reused, False otherwise
+    """
+    if not plan_metadata:
+        return False
+    
+    try:
+        import time
+        from datetime import datetime, timedelta
+        
+        created_timestamp = plan_metadata.get('created_timestamp', 0)
+        current_timestamp = int(time.time())
+        
+        # Calculate age in days
+        age_seconds = current_timestamp - created_timestamp
+        age_days = age_seconds / (60 * 60 * 24)
+        
+        # Check if plan is older than 5 weeks (35 days)
+        if age_days > 35:
+            print(f"📅 Plan expired: {age_days:.1f} days old (>35 days)")
+            return False
+        
+        # Check for injuries
+        if detect_injury_from_history():
+            print(f"🚨 Plan invalid: Injury detected")
+            return False
+        
+        print(f"✅ Plan valid: {age_days:.1f} days old, no injuries")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error validating plan: {e}")
+        return False
+
+
+def generate_weekly_training_plan(user_profile: dict = None, wellness_data: dict = None, nutrition_data: dict = None) -> dict:
+    """
+    Generate a new weekly training plan using AI (Groq).
+    
+    Args:
+        user_profile: User fitness profile (calories, phase, etc.)
+        wellness_data: Current wellness/biometric data
+        nutrition_data: Current nutrition status
+        
+    Returns:
+        Dictionary with weekly plan including exercises, sets, reps for each day
+    """
+    try:
+        client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        
+        # Build context from user data
+        profile_context = ""
+        calories = 2000
+        phase = "maintenance"
+        protein = 150
+        user_notes = ""
+        
+        if user_profile:
+            calories = user_profile.get('calories', 2000)
+            phase = user_profile.get('phase', 'maintenance')
+            protein = user_profile.get('protein_target', 150)
+            user_notes = user_profile.get('notes', '')
+            
+            profile_context = f"""
+USER PROFILE (CRITICAL - MUST REFERENCE IN ALL DECISIONS):
+- Daily Caloric Target: {calories} kcal/day
+- Training Phase: {phase.upper()}
+- Protein Target: {protein}g/day
+- User Preferences/Notes: {user_notes if user_notes else 'None specified'}
+"""
+        
+        wellness_context = ""
+        readiness = "Good"
+        sleep_score = 70
+        
+        if wellness_data:
+            readiness = wellness_data.get('readiness', 'Good')
+            sleep_score = wellness_data.get('sleep_score', 70)
+            wellness_context = f"""
+CURRENT WELLNESS STATUS:
+- Recovery Readiness: {readiness}
+- Sleep Quality: {sleep_score}/100
+- Stress Level: {wellness_data.get('stress_level', 'Moderate')}
+- HRV Status: {wellness_data.get('hrv', 'Normal')}
+"""
+        
+        # Determine training approach based on phase
+        phase_specific_instructions = ""
+        if phase == "bulking":
+            phase_specific_instructions = """
+BULKING PHASE REQUIREMENTS:
+- Focus: Hypertrophy (muscle growth) and progressive overload
+- Volume: HIGHER volume (4-5 sets per exercise, 8-12 rep range for main lifts)
+- Exercise Selection: Compound movements + isolation work for volume
+- Rep Ranges: 6-12 for compounds, 10-15 for accessories
+- Training Days: 4-5 days recommended (Push/Pull/Legs or Upper/Lower split)
+- Rest Periods: 2-3 min for compounds, 60-90s for accessories
+- Intensity: 70-85% of 1RM, focus on time under tension
+- Example: Squat 4x10, Leg Press 4x12, Leg Curls 3x15
+"""
+        elif phase == "cutting":
+            phase_specific_instructions = """
+CUTTING PHASE REQUIREMENTS:
+- Focus: Maintain strength and muscle mass while in caloric deficit
+- Volume: MODERATE volume (3-4 sets, lower reps to preserve CNS)
+- Exercise Selection: Prioritize compound movements, minimize isolation
+- Rep Ranges: 5-8 for main lifts (strength focus), 8-12 for accessories
+- Training Days: 3-4 days (avoid overtraining in deficit)
+- Rest Periods: 3-4 min for compounds (full recovery), 90s for accessories
+- Intensity: 75-90% of 1RM, focus on maintaining load
+- Include: 1-2 HIIT/conditioning sessions
+- Example: Squat 4x6, Romanian Deadlift 3x8, skip high-volume accessories
+"""
+        else:  # maintenance
+            phase_specific_instructions = """
+MAINTENANCE PHASE REQUIREMENTS:
+- Focus: Balanced strength and conditioning
+- Volume: MODERATE volume (3-4 sets per exercise)
+- Exercise Selection: Mix of compound and isolation
+- Rep Ranges: 6-10 for compounds, 10-12 for accessories
+- Training Days: 3-4 days (sustainable long-term)
+- Rest Periods: 2-3 min for compounds, 60-90s for accessories
+- Intensity: 70-80% of 1RM
+- Example: Squat 4x8, Bench Press 4x8, Rows 3x10
+"""
+        
+        system_prompt = f"""You are an ELITE strength and conditioning coach with 15+ years of experience training athletes and bodybuilders. You specialize in evidence-based, periodized programming.
+
+CRITICAL RULES:
+0. **HIGHEST PRIORITY - USER PREFERENCES**: If the user's notes specify a preferred workout split (e.g., "Upper Lower", "Push Pull Legs", "Full Body", etc.) or training frequency (e.g., "5 times a week"), you MUST use that split and frequency. This overrides all default recommendations.
+   - User Notes: "{user_notes}"
+   - Parse for: split type (Upper/Lower, PPL, Full Body, etc.) and frequency (X days/week)
+   - If notes mention a specific split: USE IT, DO NOT default to PPL or any other split
+1. You MUST explicitly reference the user's profile in your program design
+2. Training MUST align with their caloric phase (cutting/bulking/maintenance)
+3. Every exercise selection must have a clear rationale
+4. Programs must follow the USER'S PREFERRED split if specified, otherwise use proven routines (Push/Pull/Legs, Upper/Lower, or Full Body)
+5. Include specific load prescriptions (% of 1RM or RPE)
+6. Exercise names must be SPECIFIC (e.g., "Barbell Back Squat" not just "Squat")
+
+PROGRAM STRUCTURE REQUIREMENTS:
+- Total Days: 3-5 training days per week (based on phase and recovery)
+- Rest Days: Must include at least 2 full rest days
+- Progressive Overload: Specify how to progress each week
+- Deload Strategy: Built into week 4-5
+
+EXERCISE QUALITY STANDARDS:
+✓ GOOD: "Barbell Back Squat (Low Bar)", "Dumbbell Bench Press (Incline 30°)"
+✗ BAD: "Squats", "Bench", "Curls"
+
+✓ GOOD: Compound movements first, then isolation
+✗ BAD: Random exercise order
+
+FORMAT REQUIREMENTS:
+{{
+  "weekly_schedule": [
+    {{
+      "day": "Monday",
+      "focus": "PUSH - Chest/Shoulders/Triceps (Hypertrophy Focus)",
+      "exercises": [
+        {{
+          "name": "Barbell Bench Press (Flat)",
+          "sets": 4,
+          "reps": 8,
+          "rest": "3 min",
+          "notes": "Main compound, 80% 1RM, focus on controlled eccentric"
+        }},
+        {{
+          "name": "Dumbbell Overhead Press (Seated)",
+          "sets": 3,
+          "reps": 10,
+          "rest": "90s",
+          "notes": "Vertical press variation, RPE 7-8"
+        }}
+      ]
+    }}
+  ],
+  "program_notes": "Explain WHY this program fits the user's {phase} phase at {calories} kcal. Reference specific adaptations expected.",
+  "progression_strategy": "Specific week-to-week progression plan (e.g., 'Week 1-3: Add 2.5kg per session, Week 4: Deload 20%, Week 5: Test new maxes')"
+}}
+
+{phase_specific_instructions}
+
+WELLNESS-BASED ADJUSTMENTS:
+- If Readiness is "Good" and Sleep > 80: Can push higher volume/intensity
+- If Readiness is "Compromised" or Sleep < 60: Reduce volume by 20-30%, focus on technique
+- If HRV is "Low": Avoid CNS-intensive lifts (heavy deadlifts, max effort work)
+"""
+        
+        user_prompt = f"""Design a 5-week training program for this user:
+
+{profile_context}
+{wellness_context}
+
+SPECIFIC REQUIREMENTS FOR THIS USER:
+0. **WORKOUT SPLIT (MANDATORY)**: {'User explicitly requested: ' + user_notes + ' - YOU MUST follow this split and frequency exactly' if user_notes and any(keyword in user_notes.lower() for keyword in ['upper', 'lower', 'push', 'pull', 'leg', 'full body', 'times', 'days']) else f'Design an appropriate {phase}-optimized split (PPL, Upper/Lower, or Full Body)'}
+1. Their {phase} phase at {calories} kcal means you must prioritize {'hypertrophy volume' if phase == 'bulking' else 'strength maintenance' if phase == 'cutting' else 'balanced training'}
+2. Current recovery status ({readiness}, {sleep_score}/100 sleep) indicates {'higher volume tolerance' if readiness == 'Good' and sleep_score > 80 else 'moderate volume' if readiness == 'Good' else 'volume reduction needed'}
+3. Protein intake of {protein}g supports {'aggressive muscle building' if phase == 'bulking' else 'muscle preservation' if phase == 'cutting' else 'maintenance'}
+
+DELIVERABLES:
+- 7-day schedule (including rest days explicitly marked)
+- 3-5 training days with COMPLETE exercise details
+- Exercise names must be specific with equipment and variation
+- Sets, reps, rest, AND detailed notes for each exercise
+- Program notes explaining WHY this fits their {phase} phase
+- 5-week progression strategy with deload week
+
+EXAMPLE QUALITY LEVEL:
+Day: "Monday - PUSH (Chest/Shoulders/Triceps)"
+Exercise: "Barbell Bench Press (Flat, Competition Grip)"
+Sets: 4, Reps: 8, Rest: "3 min"
+Notes: "Main horizontal press, 80% 1RM, controlled 2s eccentric, explosive concentric"
+
+Now create the program in valid JSON format."""
+        
+        response = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            model="llama-3.3-70b-versatile",  # Updated from deprecated 3.1 to 3.3
+            temperature=0.6,  # Slightly lower for more consistent quality
+            max_tokens=3000,  # Increased for detailed programs
+        )
+        
+        result = response.choices[0].message.content
+        
+        # Parse JSON
+        plan_data = extract_json(result)
+        
+        if plan_data:
+            print(f"✅ Generated new weekly plan with {len(plan_data.get('weekly_schedule', []))} days")
+            return plan_data
+        else:
+            raise ValueError("Failed to parse plan JSON")
+            
+    except Exception as e:
+        print(f"❌ Error generating plan: {e}")
+        # Improved fallback plan that adapts to user phase
+        phase = user_profile.get('phase', 'maintenance') if user_profile else 'maintenance'
+        calories = user_profile.get('calories', 2000) if user_profile else 2000
+        
+        # Adjust volume based on phase
+        if phase == "bulking":
+            sets_main = 5
+            reps_main = 10
+            sets_acc = 4
+            reps_acc = 12
+        elif phase == "cutting":
+            sets_main = 4
+            reps_main = 6
+            sets_acc = 3
+            reps_acc = 10
+        else:  # maintenance
+            sets_main = 4
+            reps_main = 8
+            sets_acc = 3
+            reps_acc = 10
+        
+        return {
+            "weekly_schedule": [
+                {
+                    "day": "Monday",
+                    "focus": f"PUSH - Chest/Shoulders/Triceps ({phase.capitalize()} Phase)",
+                    "exercises": [
+                        {"name": "Barbell Bench Press (Flat)", "sets": sets_main, "reps": reps_main, "rest": "3 min", "notes": "Main horizontal press, compound movement"},
+                        {"name": "Dumbbell Overhead Press (Seated)", "sets": sets_acc, "reps": reps_acc, "rest": "90s", "notes": "Shoulder development"},
+                        {"name": "Dumbbell Incline Press (30°)", "sets": sets_acc, "reps": reps_acc, "rest": "90s", "notes": "Upper chest focus"},
+                        {"name": "Cable Tricep Pushdowns", "sets": 3, "reps": 15, "rest": "60s", "notes": "Tricep isolation"}
+                    ]
+                },
+                {
+                    "day": "Tuesday",
+                    "focus": "Rest Day",
+                    "exercises": []
+                },
+                {
+                    "day": "Wednesday",
+                    "focus": f"PULL - Back/Biceps ({phase.capitalize()} Phase)",
+                    "exercises": [
+                        {"name": "Barbell Deadlift (Conventional)", "sets": sets_main, "reps": reps_main - 2, "rest": "3 min", "notes": "Main posterior chain, compound"},
+                        {"name": "Barbell Bent-Over Rows", "sets": sets_acc, "reps": reps_acc, "rest": "2 min", "notes": "Horizontal pull, back thickness"},
+                        {"name": "Pull-Ups (Weighted if possible)", "sets": sets_acc, "reps": reps_main, "rest": "2 min", "notes": "Vertical pull, lat width"},
+                        {"name": "Barbell Curls", "sets": 3, "reps": 12, "rest": "60s", "notes": "Bicep isolation"}
+                    ]
+                },
+                {
+                    "day": "Thursday",
+                    "focus": "Rest Day",
+                    "exercises": []
+                },
+                {
+                    "day": "Friday",
+                    "focus": f"LEGS - Quads/Hamstrings/Glutes ({phase.capitalize()} Phase)",
+                    "exercises": [
+                        {"name": "Barbell Back Squat (Low Bar)", "sets": sets_main, "reps": reps_main, "rest": "3 min", "notes": "Main quad/glute compound"},
+                        {"name": "Romanian Deadlifts", "sets": sets_acc, "reps": reps_acc, "rest": "2 min", "notes": "Hamstring and glute development"},
+                        {"name": "Leg Press (45° Sled)", "sets": sets_acc, "reps": reps_acc + 2, "rest": "90s", "notes": "Volume work for quads"},
+                        {"name": "Walking Lunges", "sets": 3, "reps": 12, "rest": "60s", "notes": "Unilateral leg work"}
+                    ]
+                },
+                {
+                    "day": "Saturday",
+                    "focus": "Rest Day or Active Recovery",
+                    "exercises": []
+                },
+                {
+                    "day": "Sunday",
+                    "focus": "Rest Day",
+                    "exercises": []
+                }
+            ],
+            "program_notes": f"Fallback {phase} program at {calories} kcal/day. This is a proven Push/Pull/Legs split with appropriate volume for your phase. For {phase} phase: {'focus on progressive overload and volume' if phase == 'bulking' else 'maintain strength while managing fatigue' if phase == 'cutting' else 'balanced training for long-term sustainability'}. REST DAYS ARE CRITICAL for recovery.",
+            "progression_strategy": f"Week 1-3: {'Add 2.5-5kg per session and/or add 1-2 reps' if phase == 'bulking' else 'Maintain current loads, focus on bar speed' if phase == 'cutting' else 'Add 2.5kg every other week'}, Week 4: Deload 20% volume, Week 5: Resume with increased loads"
+        }
+
+
+def adjust_plan_volume(plan: dict, wellness_data: dict = None, nutrition_data: dict = None) -> tuple:
+    """
+    Adjust sets/reps in an existing plan based on current wellness and nutrition.
+    Does NOT change the exercises themselves, only the volume.
+    
+    Args:
+        plan: Existing weekly plan dictionary
+        wellness_data: Current wellness metrics
+        nutrition_data: Current nutrition status
+        
+    Returns:
+        Tuple of (adjusted_plan, adjustment_reason)
+    """
+    try:
+        import copy
+        adjusted_plan = copy.deepcopy(plan)
+        adjustment_reason = "Volume maintained"
+        
+        # Determine adjustment factor based on wellness
+        volume_multiplier = 1.0
+        
+        if wellness_data:
+            readiness = wellness_data.get('readiness', 'Good')
+            sleep_score = wellness_data.get('sleep_score', 70)
+            stress = wellness_data.get('stress_level', 'Moderate')
+            hrv = wellness_data.get('hrv', 'Normal')
+            
+            # Reduce volume if compromised
+            if readiness == 'Compromised' or sleep_score < 50 or stress == 'High' or hrv == 'Low':
+                volume_multiplier = 0.75
+                adjustment_reason = "Volume reduced 25% due to low readiness/poor recovery"
+            elif sleep_score < 65 or stress == 'Moderate':
+                volume_multiplier = 0.9
+                adjustment_reason = "Volume reduced 10% for recovery optimization"
+            elif sleep_score >= 85 and readiness == 'Good' and hrv == 'High':  # Fixed: >= instead of >
+                volume_multiplier = 1.1
+                adjustment_reason = "Volume increased 10% - excellent recovery status"
+        
+        # Apply adjustments to all exercises
+        if 'weekly_schedule' in adjusted_plan:
+            for day in adjusted_plan['weekly_schedule']:
+                if 'exercises' in day:
+                    for exercise in day['exercises']:
+                        # Adjust sets (round to nearest integer, min 1)
+                        original_sets = exercise.get('sets', 3)
+                        exercise['sets'] = max(1, round(original_sets * volume_multiplier))
+                        
+                        # Optionally adjust reps slightly (for high/low volume days)
+                        if volume_multiplier < 0.9:
+                            # If reducing volume significantly, keep reps the same or increase slightly
+                            pass
+                        elif volume_multiplier > 1.05:
+                            # If increasing volume, might reduce reps slightly
+                            original_reps = exercise.get('reps', 10)
+                            exercise['reps'] = max(5, round(original_reps * 0.95))
+        
+        print(f"📊 Volume adjusted: {volume_multiplier}x - {adjustment_reason}")
+        return adjusted_plan, adjustment_reason
+        
+    except Exception as e:
+        print(f"❌ Error adjusting volume: {e}")
+        return plan, "No adjustments applied (error)"
+
 
 @app.post("/api/profile/save")
 async def save_user_profile(request: UserProfileRequest):
@@ -624,6 +1083,137 @@ async def analyze_wellness_data(request: WellnessRequest):
     except Exception as e:
         print(f"❌ Wellness analysis error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/trainer/weekly-plan")
+async def get_weekly_training_plan(request: WeeklyPlanRequest):
+    """
+    Generate or retrieve weekly training plan with intelligent caching.
+    
+    Logic:
+    1. Check for existing plan in Pinecone
+    2. If plan exists and is < 5 weeks old AND no injuries detected:
+       - Return cached plan with volume adjusted for current wellness/nutrition
+    3. If no plan, plan expired, or injury detected:
+       - Generate new plan using AI
+       - Save to Pinecone
+    4. If force_regenerate is True, skip cache and generate new plan
+    """
+    try:
+        from tools.memory_store import get_training_plan_memory, save_training_plan
+        import time
+        from datetime import datetime, timedelta
+        
+        print(f"🏋️ Weekly plan request for user {request.user_id}, force_regenerate={request.force_regenerate}")
+        
+        # Fetch user profile and wellness data for context
+        user_profile = get_user_profile()
+        wellness_data = get_wellness_data()
+        
+        # Check for existing plan
+        cached_plan = get_training_plan_memory(user_id=request.user_id)
+        
+        should_use_cache = False
+        plan_status = "new"
+        
+        if cached_plan and not request.force_regenerate:
+            # Validate cache
+            if is_plan_valid(cached_plan):
+                should_use_cache = True
+                plan_status = "cached"
+                print(f"✅ Using cached plan from {cached_plan.get('created_date')}")
+            else:
+                print(f"⚠️ Cached plan invalid, generating new plan")
+        
+        # Generate or retrieve plan
+        if should_use_cache:
+            # Parse cached plan data
+            try:
+                plan_json = extract_json(cached_plan.get('plan_data', '{}'))
+                if not plan_json:
+                    raise ValueError("Failed to parse cached plan")
+                
+                # Adjust volume based on current wellness/nutrition
+                adjusted_plan, adjustment_reason = adjust_plan_volume(
+                    plan_json, 
+                    wellness_data=wellness_data,
+                    nutrition_data=user_profile
+                )
+                
+                # Calculate expiration info
+                created_timestamp = cached_plan.get('created_timestamp', int(time.time()))
+                age_days = (int(time.time()) - created_timestamp) / (60 * 60 * 24)
+                weeks_remaining = max(0, round((35 - age_days) / 7, 1))
+                expires_date = datetime.fromtimestamp(created_timestamp + (35 * 24 * 60 * 60)).strftime('%Y-%m-%d')
+                
+                return {
+                    "status": plan_status,
+                    "plan": {
+                        "created_date": cached_plan.get('created_date'),
+                        "expires_date": expires_date,
+                        "weeks_remaining": weeks_remaining,
+                        "weekly_schedule": adjusted_plan.get('weekly_schedule', []),
+                        "program_notes": adjusted_plan.get('program_notes', ''),
+                        "progression_strategy": adjusted_plan.get('progression_strategy', '')
+                    },
+                    "adjustment_reason": adjustment_reason,
+                    "log_id": cached_plan.get('id')
+                }
+                
+            except Exception as e:
+                print(f"❌ Error using cached plan: {e}, generating new")
+                should_use_cache = False
+        
+        # Generate new plan
+        if not should_use_cache:
+            print(f"🤖 Generating new weekly plan using AI...")
+            
+            # Check if injury was detected (for metadata)
+            injury_detected = detect_injury_from_history(request.user_id)
+            
+            # Generate plan with AI
+            new_plan = generate_weekly_training_plan(
+                user_profile=user_profile,
+                wellness_data=wellness_data,
+                nutrition_data=None
+            )
+            
+            # Save to Pinecone
+            exercises = []
+            if 'weekly_schedule' in new_plan:
+                for day in new_plan['weekly_schedule']:
+                    if 'exercises' in day:
+                        exercises.extend([ex.get('name', '') for ex in day['exercises']])
+            
+            plan_data_str = json.dumps(new_plan)
+            log_id = save_training_plan(
+                user_id=request.user_id,
+                plan_data=plan_data_str,
+                exercises=exercises,
+                injury_detected=injury_detected
+            )
+            
+            # Calculate dates
+            created_date = time.strftime('%Y-%m-%d')
+            expires_date = (datetime.now() + timedelta(days=35)).strftime('%Y-%m-%d')
+            
+            return {
+                "status": "new",
+                "plan": {
+                    "created_date": created_date,
+                    "expires_date": expires_date,
+                    "weeks_remaining": 5.0,
+                    "weekly_schedule": new_plan.get('weekly_schedule', []),
+                    "program_notes": new_plan.get('program_notes', ''),
+                    "progression_strategy": new_plan.get('progression_strategy', '')
+                },
+                "adjustment_reason": "New plan generated" + (" (injury recovery focus)" if injury_detected else ""),
+                "log_id": log_id
+            }
+        
+    except Exception as e:
+        print(f"❌ Weekly plan error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate weekly plan: {str(e)}")
+
 
 @app.post("/api/nutrition/start")
 async def start_nutrition_session(request: NutritionRequest):

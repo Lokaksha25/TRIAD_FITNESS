@@ -303,3 +303,104 @@ def format_wellness_context(wellness_memories: list) -> str:
         )
     
     return "\n".join(context_parts)
+
+
+def get_training_plan_memory(user_id: str = "user_123", top_k: int = 1) -> dict:
+    """
+    Retrieve the most recent training plan for a user from Pinecone.
+    
+    Args:
+        user_id: User identifier
+        top_k: Number of results to return (default 1 for latest plan)
+        
+    Returns:
+        Dictionary with plan data and metadata, or None if not found
+    """
+    try:
+        index = _get_index()
+        embeddings = _get_embeddings()
+        
+        # Query for training plans
+        query_vector = embeddings.embed_query(f"weekly training plan workout program for {user_id}")
+        
+        # Query Pinecone
+        results = index.query(
+            vector=query_vector,
+            top_k=top_k * 3,  # Fetch more to filter
+            include_metadata=True
+        )
+        
+        # Filter for training_plan type
+        for match in results.get('matches', []):
+            meta = match.get('metadata', {})
+            # Check for training_plan type
+            if meta.get('type') == 'training_plan' and meta.get('user_id') == user_id:
+                return {
+                    "id": match['id'],
+                    "score": match['score'],
+                    "plan_data": meta.get('plan_data', ''),
+                    "created_timestamp": meta.get('created_timestamp', 0),
+                    "created_date": meta.get('created_date', ''),
+                    "exercises": meta.get('exercises', []),
+                    "injury_detected": meta.get('injury_detected', False),
+                    "plan_version": meta.get('plan_version', 'v1'),
+                    "user_id": meta.get('user_id', '')
+                }
+        
+        return None
+        
+    except Exception as e:
+        print(f"❌ Error fetching training plan: {e}")
+        return None
+
+
+def save_training_plan(user_id: str, plan_data: str, exercises: list, injury_detected: bool = False) -> str:
+    """
+    Save a training plan to Pinecone with specialized metadata.
+    
+    Args:
+        user_id: User identifier
+        plan_data: The full plan content (JSON string or formatted text)
+        exercises: List of exercise names in the plan
+        injury_detected: Whether an injury was detected during plan generation
+        
+    Returns:
+        The log ID of the saved plan
+    """
+    try:
+        index = _get_index()
+        embeddings = _get_embeddings()
+        
+        # Generate unique ID
+        timestamp = int(time.time())
+        log_id = f"training_plan_{timestamp}"
+        
+        # Build metadata
+        metadata = {
+            "type": "training_plan",
+            "agent_type": "trainer",
+            "created_timestamp": timestamp,
+            "created_date": time.strftime('%Y-%m-%d'),
+            "exercises": exercises[:20],  # Limit to avoid metadata size issues
+            "user_id": user_id,
+            "injury_detected": injury_detected,
+            "plan_version": "v1",
+            "text": plan_data[:1000],  # Pinecone metadata limit
+            "plan_data": plan_data[:1000]
+        }
+        
+        # Embed and upsert
+        vector_values = embeddings.embed_query(plan_data)
+        
+        index.upsert(vectors=[{
+            "id": log_id,
+            "values": vector_values,
+            "metadata": metadata
+        }])
+        
+        print(f"✅ Saved training plan: {log_id} for user {user_id}")
+        return log_id
+        
+    except Exception as e:
+        print(f"❌ Error saving training plan: {e}")
+        return None
