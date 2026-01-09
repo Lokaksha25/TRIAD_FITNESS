@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Loader2, Settings, TrendingDown, TrendingUp, Minus, Check } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 interface UserProfile {
     calories: number;
@@ -9,6 +10,7 @@ interface UserProfile {
 }
 
 const ProfileSettings: React.FC = () => {
+    const { currentUser } = useAuth();
     const [profile, setProfile] = useState<UserProfile>({
         calories: 2000,
         phase: 'maintenance',
@@ -23,8 +25,12 @@ const ProfileSettings: React.FC = () => {
     // Fetch existing profile on mount
     useEffect(() => {
         const fetchProfile = async () => {
+            if (!currentUser) {
+                setIsLoading(false);
+                return;
+            }
             try {
-                const response = await fetch('/api/profile');
+                const response = await fetch(`/api/profile?user_id=${currentUser.uid}`);
                 const data = await response.json();
                 if (data.status === 'success' && data.profile) {
                     setProfile(data.profile);
@@ -36,9 +42,14 @@ const ProfileSettings: React.FC = () => {
             }
         };
         fetchProfile();
-    }, []);
+    }, [currentUser]);
 
     const handleSave = async () => {
+        if (!currentUser) {
+            setError('User not authenticated');
+            return;
+        }
+
         setIsSaving(true);
         setError(null);
         setSaveSuccess(false);
@@ -47,7 +58,10 @@ const ProfileSettings: React.FC = () => {
             const response = await fetch('/api/profile/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(profile)
+                body: JSON.stringify({
+                    ...profile,
+                    user_id: currentUser.uid
+                })
             });
 
             if (!response.ok) throw new Error('Failed to save profile');

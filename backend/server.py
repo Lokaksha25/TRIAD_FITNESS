@@ -413,6 +413,7 @@ async def onboarding_handler(request: OnboardingRequest):
     """
     Store user onboarding data as user settings in Pinecone.
     This includes physical stats and calculated calorie targets.
+    Also creates a user_profile record for the profile page.
     """
     from backend.tools.memory_store import _get_index, _get_embeddings
     import time
@@ -439,8 +440,8 @@ This user is aiming to {request.goal} weight with a {request.activity_level} act
         # Embed the settings
         vector = embeddings.embed_query(onboarding_text)
         
-        # Prepare metadata
-        metadata = {
+        # Prepare metadata for user_settings
+        settings_metadata = {
             "type": "user_settings",
             "gender": request.gender,
             "age": request.age,
@@ -453,21 +454,67 @@ This user is aiming to {request.goal} weight with a {request.activity_level} act
             "text": onboarding_text
         }
         
-        # Store in Pinecone under user's namespace
-        vector_id = f"onboarding_{request.user_id}_{int(time.time())}"
+        # Store user_settings in Pinecone under user's namespace
+        settings_vector_id = f"onboarding_{request.user_id}_{int(time.time())}"
         
         index.upsert(
-            vectors=[(vector_id, vector, metadata)],
+            vectors=[(settings_vector_id, vector, settings_metadata)],
+            namespace=request.user_id
+        )
+        
+        # NOW ALSO CREATE user_profile record for profile page
+        # Map onboarding data to profile format
+        goal_to_phase_map = {
+            "lose": "cutting",
+            "maintain": "maintenance",
+            "gain": "bulking"
+        }
+        phase = goal_to_phase_map.get(request.goal, "maintenance")
+        
+        # Calculate protein target: 2g per kg body weight (standard recommendation)
+        protein_target = int(request.weight * 2)
+        
+        # Create profile document
+        profile_text = f"""User Fitness Profile:
+Daily Calorie Target: {request.calculated_calories} kcal
+Current Phase: {phase}
+Protein Target: {protein_target}g per day
+
+This profile was automatically created from onboarding data.
+"""
+        
+        # Embed the profile
+        profile_vector = embeddings.embed_query(profile_text)
+        
+        # Prepare metadata for user_profile
+        profile_metadata = {
+            "type": "user_profile",
+            "calories": request.calculated_calories,
+            "phase": phase,
+            "protein_target": protein_target,
+            "notes": f"Auto-generated from onboarding: {request.goal} weight, {request.activity_level} activity level",
+            "created_timestamp": int(time.time()),
+            "text": profile_text
+        }
+        
+        # Store user_profile in Pinecone
+        profile_vector_id = f"profile_{request.user_id}_{int(time.time())}"
+        
+        index.upsert(
+            vectors=[(profile_vector_id, profile_vector, profile_metadata)],
             namespace=request.user_id
         )
         
         print(f"✅ Onboarding data saved for user {request.user_id}")
-        print(f"   Calories: {request.calculated_calories} kcal, Goal: {request.goal}")
+        print(f"   Calories: {request.calculated_calories} kcal, Goal: {request.goal} → Phase: {phase}")
+        print(f"   Protein Target: {protein_target}g")
         
         return {
             "status": "success",
             "message": "Onboarding data saved successfully",
-            "calories": request.calculated_calories
+            "calories": request.calculated_calories,
+            "phase": phase,
+            "protein_target": protein_target
         }
         
     except Exception as e:

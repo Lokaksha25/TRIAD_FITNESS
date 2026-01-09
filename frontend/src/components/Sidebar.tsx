@@ -9,7 +9,8 @@ import {
     User,
     Battery,
     Brain,
-    Settings
+    Settings,
+    LogOut
 } from 'lucide-react';
 
 interface NavItem {
@@ -20,7 +21,7 @@ interface NavItem {
 
 const Sidebar: React.FC = () => {
     const [isExpanded, setIsExpanded] = useState(false);
-    const { currentUser } = useAuth();
+    const { currentUser, logout } = useAuth();
 
     // Get user display info from Firebase auth
     const displayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
@@ -144,7 +145,7 @@ const Sidebar: React.FC = () => {
 
             {/* User Profile */}
             <div className="p-3 border-t border-border">
-                <div className="flex items-center gap-3 px-2 py-2 rounded-lg bg-secondary overflow-hidden">
+                <div className="flex items-center gap-2 px-2 py-2 rounded-lg bg-secondary overflow-hidden">
                     {currentUser?.photoURL ? (
                         <img
                             src={currentUser.photoURL}
@@ -168,6 +169,21 @@ const Sidebar: React.FC = () => {
                                 <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
                                 <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
                             </motion.div>
+                        )}
+                    </AnimatePresence>
+                    <AnimatePresence mode="wait">
+                        {isExpanded && (
+                            <motion.button
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.8 }}
+                                transition={{ duration: 0.2 }}
+                                onClick={logout}
+                                className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                                title="Logout"
+                            >
+                                <LogOut size={16} />
+                            </motion.button>
                         )}
                     </AnimatePresence>
                 </div>
