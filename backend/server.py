@@ -394,18 +394,15 @@ def get_latest_trainer_log(exercise: str, query: str, api_key: str, pinecone_key
 @app.post("/api/auth/signup")
 async def signup_handler(request: SignupRequest):
     """
-    Handle user signup: Initialize Pinecone namespace.
+    Handle user signup: Just acknowledge the signup.
+    Namespace initialization will happen during onboarding for better performance.
     """
-    from backend.tools.memory_store import initialize_user_namespace
-    
     print(f"📝 Signup request for: {request.name} ({request.email})")
     
-    success = initialize_user_namespace(request.user_id, request.email, request.name)
+    # Skip initialize_user_namespace - will be done during onboarding
+    # This saves ~400-500ms per signup
     
-    if success:
-        return {"status": "success", "message": "User initialized"}
-    else:
-        raise HTTPException(status_code=500, detail="Failed to initialize user namespace")
+    return {"status": "success", "message": "User registered"}
 
 
 @app.post("/api/user/onboarding")
@@ -595,13 +592,12 @@ async def chat_handler(request: ChatRequest):
 def get_user_profile(user_id: str = None) -> dict:
     """Fetch the latest user profile from Pinecone."""
     try:
-        from tools.memory_store import _get_index, _get_embeddings
+        from tools.memory_store import _get_index, get_profile_query_vector
         
         index = _get_index()
-        embeddings = _get_embeddings()
         
-        # Query for user profile
-        query_vector = embeddings.embed_query("user fitness profile calories cutting bulking")
+        # Use cached query vector (avoids embedding API call)
+        query_vector = get_profile_query_vector()
         
         results = index.query(
             vector=query_vector,
@@ -1181,16 +1177,26 @@ async def get_profile(user_id: str):
 @app.get("/api/dashboard/metrics")
 async def get_dashboard_metrics(user_id: str):
     """
-    Fetch dashboard metrics from Pinecone.
+    Fetch dashboard metrics from Pinecone (parallelized for performance).
     Returns wellness data, user profile, and recent agent activity logs.
     """
+    import asyncio
+    
     try:
         from tools.memory_store import get_wellness_memory, get_exercise_memory, get_nutrition_memory
         
-        # 1. Fetch wellness data (sleep, HRV, RHR, readiness)
-        wellness_logs = get_wellness_memory(query="recent wellness readiness biometrics", top_k=1, user_id=user_id)
+        # Parallelize all Pinecone queries using asyncio.gather
+        wellness_task = asyncio.to_thread(get_wellness_memory, query="recent wellness readiness biometrics", top_k=1, user_id=user_id)
+        profile_task = asyncio.to_thread(get_user_profile, user_id=user_id)
+        exercise_task = asyncio.to_thread(get_exercise_memory, query="recent workout session", top_k=2, user_id=user_id)
+        nutrition_task = asyncio.to_thread(get_nutrition_memory, query="recent meal plan", top_k=2, user_id=user_id)
         
-        # Only populate wellness data if we have actual logs
+        # Execute all queries in parallel
+        wellness_logs, user_profile, exercise_logs, nutrition_logs = await asyncio.gather(
+            wellness_task, profile_task, exercise_task, nutrition_task
+        )
+        
+        # 1. Process wellness data
         wellness_data = None
         has_wellness_data = wellness_logs and len(wellness_logs) > 0
         
@@ -1217,8 +1223,7 @@ async def get_dashboard_metrics(user_id: str):
         else:
             print("⚠️ No wellness logs found for user", user_id)
 
-        # 2. Fetch user profile
-        user_profile = get_user_profile(user_id=user_id)
+        # 2. Process user profile
         user_data = {
             "name": "Dr. A. Sharma",
             "status": "Stable",
@@ -1232,10 +1237,7 @@ async def get_dashboard_metrics(user_id: str):
             user_data["phase"] = user_profile.get("phase", "maintenance")
             user_data["calories"] = user_profile.get("calories", 2000)
         
-        # 3. Fetch recent agent activity for logs
-        exercise_logs = get_exercise_memory(query="recent workout session", top_k=2, user_id=user_id)
-        nutrition_logs = get_nutrition_memory(query="recent meal plan", top_k=2, user_id=user_id)
-        
+        # 3. Process agent logs
         agent_logs = []
         
         # Add trainer logs
@@ -1929,42 +1931,99 @@ async def get_timeline():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/manager/conflicts")
-async def get_manager_conflicts():
+async def get_manager_conflicts(user_id: str):
     """
-    Fetch active conflicts and resolutions from the Manager Agent.
-    (Currently mocked/heuristic-based, but served from backend)
+    Generate Daily Briefing using Manager Agent orchestration.
+    Coordinates wellness, trainer, and nutritionist agents.
     """
     try:
-        # In a real system, this would come from a dedicated Manager Agent analyzing the logs.
-        # For now, we simulate a check based on recent memory.
+        from backend.agents.manager_agent import generate_daily_briefing
         
-        # Mock Response matching the frontend structure
-        response = {
-    "sources": [
-        {
-            "agent": "Physical Trainer",
-            "priority": "High",
-            "recommendation": "High Intensity Interval Training (HIIT) protocol recommended for max hypertrophy."
-        },
-        {
-            "agent": "Wellness Manager",
-            "priority": "High",
-            "recommendation": "Sleep score critical (4.5h). Recommend cancelling high-intensity load to prevent injury."
-        }
-    ],
-    "resolution": {
-        "decision": "Override: Active Recovery Protocol",
-        "reasoning": "Wellness data indicates critical fatigue state. High intensity workload poses 85% injury risk. Prioritizing CNS recovery.",
-        "impact": [
-            "Trainer Agent: Downgraded to 'Mobility Flow'",
-            "Nutrition Agent: Added Magnesium-rich post-workout meal",
-            "User Notification: Sleep schedule adjustment sent"
-        ]
-    }
-}
+        print(f"🎯 Manager Agent generating daily briefing for user: {user_id}")
+        
+        # Generate real briefing using agent orchestration
+        briefing = generate_daily_briefing(user_id)
+        
+        # Transform to frontend format (conflicts view)
+        if briefing.get('conflicts') and len(briefing['conflicts']) > 0:
+            # If there are conflicts, show conflict resolution view
+            sources = []
+            
+            # Wellness input
+            wellness = briefing['wellness_assessment']
+            sources.append({
+                "agent": "Wellness Agent",
+                "priority": "High" if wellness['readiness_score'] < 60 else "Medium",
+                "recommendation": f"Readiness score: {wellness['readiness_score']}/100. Sleep: {wellness['sleep_hours']}h. Status: {wellness['state']}"
+            })
+            
+            # Trainer input
+            workout = briefing['workout_plan']
+            sources.append({
+                "agent": "Physical Trainer",
+                "priority": "High",
+                "recommendation": f"Recommends: {workout['workout']} ({workout['intensity']} intensity, {workout['duration']})"
+            })
+            
+            # Build conflict resolution
+            conflict = briefing['conflicts'][0]
+            response = {
+                "sources": sources,
+                "resolution": {
+                    "decision": f"Override: {workout['workout']}",
+                    "reasoning": conflict['issue'] + ". " + conflict['resolution'],
+                    "impact": [
+                        f"Trainer: Adjusted to {workout['workout']}",
+                        f"Nutrition: {briefing['nutrition_plan']['total_calories']} with {briefing['nutrition_plan']['protein']} protein",
+                        f"Safety: {briefing['final_decision']['priority']}"
+                    ]
+                }
+            }
+        else:
+            # No conflicts - show harmonious plan
+            wellness = briefing['wellness_assessment']
+            workout = briefing['workout_plan']
+            nutrition = briefing['nutrition_plan']
+            
+            response = {
+                "sources": [
+                    {
+                        "agent": "Wellness Agent",
+                        "priority": "Medium",
+                        "recommendation": f"Readiness: {wellness['readiness_score']}/100. {wellness['state']}"
+                    },
+                    {
+                        "agent": "Physical Trainer",
+                        "priority": "Medium",
+                        "recommendation": f"{workout['workout']} - {workout['intensity']} intensity for {workout['duration']}"
+                    },
+                    {
+                        "agent": "Nutritionist",
+                        "priority": "Medium",
+                        "recommendation": f"{nutrition['total_calories']} with {nutrition['protein']} protein"
+                    }
+                ],
+                "resolution": {
+                    "decision": "Unified Daily Plan",
+                    "reasoning": f"All agents aligned. {workout['rationale']}",
+                    "impact": [
+                        f"Workout: {workout['workout']}",
+                        f"Nutrition: {nutrition['total_calories']}",
+                        f"Pre-workout: {nutrition.get('pre_workout', 'N/A')}",
+                        f"Post-workout: {nutrition.get('post_workout', 'N/A')}"
+                    ]
+                }
+            }
+        
+        print(f"✅ Daily briefing generated: {briefing['final_decision']['summary']}")
         return response
+        
     except Exception as e:
+        print(f"❌ Error generating daily briefing: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.post("/api/trainer/stop")

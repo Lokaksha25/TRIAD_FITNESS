@@ -1,22 +1,31 @@
 import React from 'react';
 import { ACTIVE_CONFLICT } from '../constants';
 import { ArrowRight, CheckCircle2, Scale } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const ManagerView: React.FC = () => {
+    const { currentUser } = useAuth();
     const [conflict, setConflict] = React.useState<any>(null);
     const [loading, setLoading] = React.useState(true);
 
     React.useEffect(() => {
-        fetchConflict();
-    }, []);
+        if (currentUser) {
+            fetchConflict();
+        }
+    }, [currentUser]);
 
     const fetchConflict = async () => {
+        if (!currentUser) {
+            setLoading(false);
+            return;
+        }
+
         try {
-            const res = await fetch('/api/manager/conflicts');
+            const res = await fetch(`/api/manager/conflicts?user_id=${currentUser.uid}`);
             const data = await res.json();
             setConflict(data);
         } catch (e) {
-            console.error("Failed to fetch conflicts", e);
+            console.error("Failed to fetch manager briefing", e);
         } finally {
             setLoading(false);
         }

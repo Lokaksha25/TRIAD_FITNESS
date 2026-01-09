@@ -42,13 +42,43 @@ def get_namespace_id(user_id: str) -> str:
     return hashlib.sha256(combined.encode()).hexdigest()
 
 
+# Global caches for performance optimization
+_embeddings_instance = None
+_embedding_cache = {}
+_profile_query_vector = None
+
+
 def _get_embeddings():
-    """Get the embedding model instance."""
-    api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
-    return GoogleGenerativeAIEmbeddings(
-        model="models/text-embedding-004",
-        google_api_key=api_key
-    )
+    """Get the embedding model instance (singleton pattern)."""
+    global _embeddings_instance
+    if _embeddings_instance is None:
+        api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+        _embeddings_instance = GoogleGenerativeAIEmbeddings(
+            model="models/text-embedding-004",
+            google_api_key=api_key
+        )
+    return _embeddings_instance
+
+
+def _get_cached_embedding(text: str):
+    """Get embedding with caching for repeated queries."""
+    global _embedding_cache
+    if text in _embedding_cache:
+        return _embedding_cache[text]
+    
+    embeddings = _get_embeddings()
+    vector = embeddings.embed_query(text)
+    _embedding_cache[text] = vector
+    return vector
+
+
+def get_profile_query_vector():
+    """Get a pre-computed vector for profile queries (avoids embedding API call)."""
+    global _profile_query_vector
+    if _profile_query_vector is None:
+        # Generate once and cache
+        _profile_query_vector = _get_cached_embedding("user fitness profile calories cutting bulking maintenance")
+    return _profile_query_vector
 
 
 def _get_index():
