@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { AlertTriangle, Activity, Play, CheckCircle, Terminal, FileText, BarChart3, ChevronDown, ChevronUp, Moon, Brain, Zap, Target, Dumbbell, Clock, Flame, Heart, TrendingUp } from 'lucide-react';
 import TrainerReport from './TrainerReportTest';
+import { useAuth } from '../context/AuthContext';
+import CustomSelect from './ui/CustomSelect';
 
 // --- VISUALIZATION COMPONENTS (SVG) ---
 
@@ -287,21 +289,21 @@ interface CollapsibleSectionProps {
 }
 
 const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
-  title, icon, children, defaultOpen = false, badge, badgeColor = 'bg-stone-100 text-stone-600'
+  title, icon, children, defaultOpen = false, badge, badgeColor = 'bg-secondary text-muted-foreground'
 }) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <div className="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
+    <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-5 py-4 flex items-center justify-between hover:bg-stone-50 transition-colors"
+        className="w-full px-5 py-4 flex items-center justify-between hover:bg-secondary transition-colors"
       >
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-slate-100 to-stone-100 flex items-center justify-center">
+          <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center border border-border">
             {icon}
           </div>
-          <span className="font-semibold text-stone-800">{title}</span>
+          <span className="font-semibold text-foreground">{title}</span>
           {badge && (
             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${badgeColor}`}>
               {badge}
@@ -309,11 +311,11 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
           )}
         </div>
         <div className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
-          <ChevronDown className="text-stone-400" size={20} />
+          <ChevronDown className="text-muted-foreground" size={20} />
         </div>
       </button>
       <div className={`transition-all duration-300 ease-in-out ${isOpen ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'} overflow-hidden`}>
-        <div className="px-5 pb-5 border-t border-stone-100">
+        <div className="px-5 pb-5 border-t border-border">
           {children}
         </div>
       </div>
@@ -335,8 +337,8 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, index, onToggle }
       onClick={() => { setCompleted(!completed); onToggle?.(); }}
       className={`group cursor-pointer p-4 rounded-xl border transition-all duration-300
         ${completed
-          ? 'bg-emerald-50 border-emerald-200'
-          : 'bg-white border-stone-200 hover:border-stone-300 hover:shadow-sm'
+          ? 'bg-emerald-950/50 border-emerald-800'
+          : 'bg-card border-border hover:border-muted'
         }`}
     >
       <div className="flex items-center gap-4">
@@ -344,7 +346,7 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, index, onToggle }
         <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all
           ${completed
             ? 'bg-emerald-500 text-white'
-            : 'bg-stone-100 text-stone-400 group-hover:bg-stone-200'
+            : 'bg-secondary text-muted-foreground group-hover:bg-muted border border-border'
           }`}
         >
           {completed ? <CheckCircle size={18} /> : <span className="text-sm font-bold">{index + 1}</span>}
@@ -352,10 +354,10 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, index, onToggle }
 
         {/* Exercise Info */}
         <div className="flex-1 min-w-0">
-          <p className={`font-medium truncate ${completed ? 'text-emerald-700 line-through' : 'text-stone-800'}`}>
+          <p className={`font-medium truncate ${completed ? 'text-emerald-400 line-through' : 'text-foreground'}`}>
             {exercise.name}
           </p>
-          <p className={`text-sm ${completed ? 'text-emerald-600' : 'text-stone-500'}`}>
+          <p className={`text-sm ${completed ? 'text-emerald-400/70' : 'text-muted-foreground'}`}>
             {exercise.reps}
           </p>
         </div>
@@ -366,7 +368,7 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, index, onToggle }
             <div
               key={i}
               className={`w-2 h-2 rounded-full transition-all
-                ${completed ? 'bg-emerald-400' : 'bg-stone-200'}`}
+                ${completed ? 'bg-emerald-400' : 'bg-muted'}`}
             />
           ))}
         </div>
@@ -384,9 +386,9 @@ interface WellnessIndicatorProps {
 
 const WellnessIndicator: React.FC<WellnessIndicatorProps> = ({ icon, label, value, status }) => {
   const colors = {
-    good: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-    warning: 'bg-amber-50 border-amber-200 text-amber-700',
-    bad: 'bg-red-50 border-red-200 text-red-700',
+    good: 'bg-emerald-950/50 border-emerald-800 text-emerald-400',
+    warning: 'bg-amber-950/50 border-amber-800 text-amber-400',
+    bad: 'bg-red-950/50 border-red-800 text-red-400',
   };
 
   return (
@@ -403,38 +405,47 @@ const WellnessIndicator: React.FC<WellnessIndicatorProps> = ({ icon, label, valu
 // --- MAIN VIEW ---
 
 const TrainerView: React.FC = () => {
+  const { currentUser } = useAuth();
   const [exerciseType, setExerciseType] = useState<string>('Squat');
-  const [loading, setLoading] = useState<boolean>(false);
+  const [sessionActive, setSessionActive] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [workoutPlan, setWorkoutPlan] = useState<string | null>(null);
-  const [detectedIssues, setDetectedIssues] = useState<string[]>([]);
-  const [sessionActive, setSessionActive] = useState<boolean>(false);
   const [totalReps, setTotalReps] = useState<number | null>(null);
-  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [detectedIssues, setDetectedIssues] = useState<string[]>([]);
+  const [saveStatus, setSaveStatus] = useState<'success' | 'failed' | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   // Weekly Plan State
-  const [weeklyPlan, setWeeklyPlan] = useState<any | null>(null);
-  const [planLoading, setPlanLoading] = useState<boolean>(false);
-  const [planStatus, setPlanStatus] = useState<string>('');  // 'new' or 'cached'
+  const [weeklyPlan, setWeeklyPlan] = useState<any>(null);
+  const [planLoading, setPlanLoading] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
+  const [planStatus, setPlanStatus] = useState<string>('new');
   const [adjustmentReason, setAdjustmentReason] = useState<string>('');
+
+  // General Error State
+  const [error, setError] = useState<string | null>(null);
+
+  const stopSession = () => {
+    setSessionActive(false);
+    setLoading(false);
+  };
 
   const startSession = async () => {
     setLoading(true);
-    setError(null);
-    setWorkoutPlan(null);
-    setDetectedIssues([]);
-    setTotalReps(null);
+    setSessionActive(true);
     setSaveStatus(null);
     setSaveError(null);
-    setSessionActive(true);
+    setDetectedIssues([]);
+    setTotalReps(null);
 
     try {
       const response = await fetch('/api/trainer/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ exercise_type: exerciseType }),
+        body: JSON.stringify({
+          exercise_type: exerciseType,
+          user_id: currentUser?.uid || "user_123"
+        }),
       });
 
       if (!response.ok) {
@@ -443,27 +454,23 @@ const TrainerView: React.FC = () => {
       }
 
       const data = await response.json();
-      setWorkoutPlan(data.plan);
-      setDetectedIssues(data.detected_issues || []);
+
       setTotalReps(data.total_reps);
-      setSaveStatus(data.save_status);
-      if (data.save_error) setSaveError(data.save_error);
+      setDetectedIssues(data.detected_issues || []);
+      setSaveStatus('success');
 
     } catch (err: any) {
-      setError(err.message);
+      console.error('Session error:', err);
+      setSaveStatus('failed');
+      setSaveError(err.message);
       setSessionActive(false);
+      setError(err.message); // Set general error for the visualizer
     } finally {
       setLoading(false);
     }
   };
 
-  const stopSession = async () => {
-    try {
-      await fetch('/api/trainer/stop', { method: 'POST' });
-    } catch (err) {
-      console.error("Failed to stop session:", err);
-    }
-  };
+  // ...
 
   const fetchWeeklyPlan = async (forceRegenerate: boolean = false) => {
     setPlanLoading(true);
@@ -474,7 +481,7 @@ const TrainerView: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: 'user_123',
+          user_id: currentUser?.uid || "user_123",
           force_regenerate: forceRegenerate
         }),
       });
@@ -509,54 +516,54 @@ const TrainerView: React.FC = () => {
         {/* Left Col: Live Stats & Monitoring */}
         <div className="lg:col-span-1 space-y-6">
           {/* Stats Card */}
-          <div className="bg-white border border-stone-200 rounded-xl p-6 shadow-sm h-full flex flex-col">
+          <div className="bg-card border border-border rounded-xl p-6 shadow-sm h-full flex flex-col">
             <div className="flex items-center gap-2 mb-6">
-              <BarChart3 className="text-stone-400" size={20} />
-              <h3 className="text-stone-500 text-xs font-bold uppercase tracking-wider">Session Monitoring</h3>
+              <BarChart3 className="text-muted-foreground" size={20} />
+              <h3 className="text-muted-foreground text-xs font-bold uppercase tracking-wider">Session Monitoring</h3>
             </div>
 
             {!sessionActive ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-stone-400 space-y-4">
+              <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground space-y-4">
                 <Activity size={48} className="opacity-20" />
                 <p className="text-sm font-medium">Ready to start session</p>
               </div>
             ) : (
               <div className="space-y-6 animate-in fade-in duration-500">
-                <div className="bg-stone-50 p-4 rounded-lg border border-stone-200">
-                  <span className="block text-xs text-stone-400 uppercase font-bold mb-1">Target Exercise</span>
-                  <span className="text-lg font-bold text-stone-800">{exerciseType}</span>
+                <div className="bg-secondary p-4 rounded-lg border border-border">
+                  <span className="block text-xs text-muted-foreground uppercase font-bold mb-1">Target Exercise</span>
+                  <span className="text-lg font-bold text-foreground">{exerciseType}</span>
                 </div>
 
                 {totalReps !== null && (
-                  <div className="bg-stone-50 p-4 rounded-lg border border-stone-200">
-                    <span className="block text-xs text-stone-400 uppercase font-bold mb-1">Total Reps</span>
-                    <span className="text-lg font-bold text-stone-800">{totalReps}</span>
+                  <div className="bg-secondary p-4 rounded-lg border border-border">
+                    <span className="block text-xs text-muted-foreground uppercase font-bold mb-1">Total Reps</span>
+                    <span className="text-lg font-bold text-foreground">{totalReps}</span>
                   </div>
                 )}
 
-                <div className="bg-stone-50 p-4 rounded-lg border border-stone-200">
-                  <span className="block text-xs text-stone-400 uppercase font-bold mb-1">Status</span>
+                <div className="bg-secondary p-4 rounded-lg border border-border">
+                  <span className="block text-xs text-muted-foreground uppercase font-bold mb-1">Status</span>
                   {loading ? (
-                    <span className="flex items-center gap-2 text-blue-600 font-bold text-sm">
-                      <span className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></span>
+                    <span className="flex items-center gap-2 text-blue-400 font-bold text-sm">
+                      <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>
                       Analyzing Form...
                     </span>
                   ) : (
                     <div className="space-y-2">
-                      <span className="flex items-center gap-2 text-green-600 font-bold text-sm">
+                      <span className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
                         <CheckCircle size={14} />
                         Analysis Complete
                       </span>
 
                       {/* Save Status Indicator */}
                       {saveStatus === 'success' && (
-                        <span className="flex items-center gap-2 text-stone-500 text-xs">
+                        <span className="flex items-center gap-2 text-muted-foreground text-xs">
                           <CheckCircle size={12} />
                           Log Saved to Cloud
                         </span>
                       )}
                       {saveStatus === 'failed' && (
-                        <div className="text-red-500 text-xs">
+                        <div className="text-red-400 text-xs">
                           <div className="flex items-center gap-2 font-bold">
                             <AlertTriangle size={12} />
                             Save Failed
@@ -569,12 +576,12 @@ const TrainerView: React.FC = () => {
                 </div>
 
                 {!loading && detectedIssues.length > 0 && (
-                  <div className="bg-red-50 p-4 rounded-lg border border-red-100">
-                    <div className="flex items-center gap-2 text-red-700 font-bold text-sm mb-2">
+                  <div className="bg-red-950/50 p-4 rounded-lg border border-red-800">
+                    <div className="flex items-center gap-2 text-red-400 font-bold text-sm mb-2">
                       <AlertTriangle size={16} />
                       <span>Issues Detected</span>
                     </div>
-                    <ul className="list-disc list-inside text-xs text-red-600 space-y-1">
+                    <ul className="list-disc list-inside text-xs text-red-400/80 space-y-1">
                       {detectedIssues.map((issue, idx) => (
                         <li key={idx} className="capitalize">{issue.replace('_', ' ')}</li>
                       ))}
@@ -583,8 +590,8 @@ const TrainerView: React.FC = () => {
                 )}
 
                 {!loading && detectedIssues.length === 0 && workoutPlan && (
-                  <div className="bg-green-50 p-4 rounded-lg border border-green-100">
-                    <div className="flex items-center gap-2 text-green-700 font-bold text-sm">
+                  <div className="bg-emerald-950/50 p-4 rounded-lg border border-emerald-800">
+                    <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
                       <CheckCircle size={16} />
                       <span>Good Form</span>
                     </div>
@@ -598,21 +605,22 @@ const TrainerView: React.FC = () => {
         {/* Center/Right Col: Agent Visualizer */}
         <div className="lg:col-span-2 flex flex-col gap-6">
           {/* Control Header */}
-          <div className="bg-white border border-stone-200 rounded-xl p-4 shadow-sm flex items-center justify-between">
+          <div className="bg-card border border-border rounded-xl p-4 shadow-sm flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold text-stone-800">AI Trainer Vision</h2>
-              <p className="text-stone-400 text-xs">Powered by Gemini 1.5 & MediaPipe</p>
+              <h2 className="text-lg font-bold text-foreground">AI Trainer Vision</h2>
+              <p className="text-muted-foreground text-xs">Powered by Gemini 1.5 & MediaPipe</p>
             </div>
             <div className="flex items-center gap-3">
-              <select
+              <CustomSelect
                 value={exerciseType}
-                onChange={(e) => setExerciseType(e.target.value)}
+                onChange={setExerciseType}
                 disabled={loading}
-                className="bg-stone-50 border border-stone-200 text-stone-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400"
-              >
-                <option value="Squat">Squat</option>
-                <option value="Pushup">Pushup</option>
-              </select>
+                options={[
+                  { value: 'Squat', label: 'Squat' },
+                  { value: 'Pushup', label: 'Pushup' }
+                ]}
+                className="w-32"
+              />
               {loading ? (
                 <button
                   onClick={stopSession}
@@ -625,7 +633,7 @@ const TrainerView: React.FC = () => {
                 <>
                   <button
                     onClick={startSession}
-                    className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold text-white transition-colors bg-slate-800 hover:bg-slate-700"
+                    className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold text-white transition-colors bg-slate-700 hover:bg-slate-600"
                   >
                     <Play size={16} fill="currentColor" />
                     <span>Start Session</span>
@@ -653,12 +661,12 @@ const TrainerView: React.FC = () => {
           </div>
 
           {/* Visualizer Canvas */}
-          <div className="flex-1 bg-stone-950 border border-stone-800 rounded-xl relative flex flex-col items-center justify-center min-h-[400px] shadow-inner overflow-hidden">
+          <div className="flex-1 bg-card border border-border rounded-xl relative flex flex-col items-center justify-center min-h-[400px] shadow-inner overflow-hidden">
             {/* Background Grid */}
             <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px]"></div>
 
             {error && (
-              <div className="z-20 bg-red-900/80 border border-red-500 text-white px-6 py-4 rounded-xl max-w-md text-center backdrop-blur-sm">
+              <div className="z-20 bg-red-950/80 border border-red-800 text-white px-6 py-4 rounded-xl max-w-md text-center backdrop-blur-sm">
                 <AlertTriangle className="mx-auto mb-2" />
                 <p>{error}</p>
               </div>
@@ -667,12 +675,12 @@ const TrainerView: React.FC = () => {
             {loading && (
               <div className="z-20 text-center space-y-4">
                 <div className="relative w-24 h-24 mx-auto">
-                  <div className="absolute inset-0 border-4 border-stone-800 rounded-full"></div>
+                  <div className="absolute inset-0 border-4 border-border rounded-full"></div>
                   <div className="absolute inset-0 border-4 border-t-blue-500 border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin"></div>
                 </div>
                 <div>
-                  <h3 className="text-white font-mono text-lg animate-pulse">Processing Vision Stream...</h3>
-                  <p className="text-stone-400 text-sm mt-2">Look for the popup window to perform {exerciseType}</p>
+                  <h3 className="text-foreground font-mono text-lg animate-pulse">Processing Vision Stream...</h3>
+                  <p className="text-muted-foreground text-sm mt-2">Look for the popup window to perform {exerciseType}</p>
                 </div>
               </div>
             )}
@@ -688,7 +696,7 @@ const TrainerView: React.FC = () => {
 
             {/* Metadata Footer */}
             <div className="absolute bottom-4 w-full px-6 pointer-events-none">
-              <div className="flex justify-between items-center text-xs text-stone-600 font-mono border-t border-stone-800 pt-3">
+              <div className="flex justify-between items-center text-xs text-muted-foreground font-mono border-t border-border pt-3">
                 <span>MODE: {loading ? 'LIVE_INFERENCE' : 'RESULT_VIEW'}</span>
                 <span>{exerciseType.toUpperCase()}_MODEL_V4</span>
               </div>
@@ -710,7 +718,7 @@ const TrainerView: React.FC = () => {
 
       {/* WEEKLY TRAINING PLAN DISPLAY */}
       {weeklyPlan && (
-        <div className="bg-white border border-stone-200 rounded-xl p-6 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -719,10 +727,10 @@ const TrainerView: React.FC = () => {
                   <Dumbbell className="text-white" size={20} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-stone-800">Weekly Training Plan</h3>
-                  <p className="text-xs text-stone-500">
-                    {planStatus === 'cached' ? '📦 Cached Plan' : '✨ Freshly Generated'} · 
-                    Expires: {weeklyPlan.expires_date} · 
+                  <h3 className="text-lg font-bold text-foreground">Weekly Training Plan</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {planStatus === 'cached' ? '📦 Cached Plan' : '✨ Freshly Generated'} ·
+                    Expires: {weeklyPlan.expires_date} ·
                     {weeklyPlan.weeks_remaining} weeks remaining
                   </p>
                 </div>
@@ -731,7 +739,7 @@ const TrainerView: React.FC = () => {
             <button
               onClick={() => fetchWeeklyPlan(true)}
               disabled={planLoading}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-foreground bg-secondary hover:bg-muted transition-colors disabled:opacity-50 border border-border"
             >
               <Zap size={14} />
               <span>Force Regenerate</span>
@@ -740,11 +748,11 @@ const TrainerView: React.FC = () => {
 
           {/* Adjustment Reason Badge */}
           {adjustmentReason && (
-            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
-              <Target className="text-amber-600 flex-shrink-0 mt-0.5" size={16} />
+            <div className="mb-4 p-3 bg-amber-950/50 border border-amber-800 rounded-lg flex items-start gap-2">
+              <Target className="text-amber-400 flex-shrink-0 mt-0.5" size={16} />
               <div>
-                <p className="text-sm font-medium text-amber-900">Volume Adjustment</p>
-                <p className="text-xs text-amber-700">{adjustmentReason}</p>
+                <p className="text-sm font-medium text-amber-400">Volume Adjustment</p>
+                <p className="text-xs text-amber-400/70">{adjustmentReason}</p>
               </div>
             </div>
           )}
@@ -752,34 +760,34 @@ const TrainerView: React.FC = () => {
           {/* Weekly Schedule Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {weeklyPlan.weekly_schedule?.map((day: any, idx: number) => (
-              <div key={idx} className="bg-stone-50 border border-stone-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+              <div key={idx} className="bg-secondary border border-border rounded-xl p-4 hover:border-muted transition-all">
                 {/* Day Header */}
-                <div className="mb-3 pb-3 border-b border-stone-200">
+                <div className="mb-3 pb-3 border-b border-border">
                   <div className="flex items-center justify-between">
-                    <h4 className="font-bold text-stone-800">{day.day}</h4>
-                    <Clock className="text-stone-400" size={14} />
+                    <h4 className="font-bold text-foreground">{day.day}</h4>
+                    <Clock className="text-muted-foreground" size={14} />
                   </div>
-                  <p className="text-xs text-stone-500 mt-1">{day.focus}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{day.focus}</p>
                 </div>
 
                 {/* Exercises */}
                 <div className="space-y-2">
                   {day.exercises?.map((exercise: any, exIdx: number) => (
-                    <div key={exIdx} className="bg-white p-3 rounded-lg border border-stone-200">
-                      <p className="font-medium text-sm text-stone-800 mb-1">{exercise.name}</p>
+                    <div key={exIdx} className="bg-card p-3 rounded-lg border border-border">
+                      <p className="font-medium text-sm text-foreground mb-1">{exercise.name}</p>
                       <div className="flex items-center gap-3 text-xs">
-                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded font-medium">
+                        <span className="px-2 py-1 bg-blue-950/50 text-blue-400 rounded font-medium border border-blue-800">
                           {exercise.sets} sets
                         </span>
-                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded font-medium">
+                        <span className="px-2 py-1 bg-emerald-950/50 text-emerald-400 rounded font-medium border border-emerald-800">
                           {exercise.reps} reps
                         </span>
                         {exercise.rest && (
-                          <span className="text-stone-500">• {exercise.rest}</span>
+                          <span className="text-muted-foreground">• {exercise.rest}</span>
                         )}
                       </div>
                       {exercise.notes && (
-                        <p className="text-xs text-stone-500 mt-2">{exercise.notes}</p>
+                        <p className="text-xs text-muted-foreground mt-2">{exercise.notes}</p>
                       )}
                     </div>
                   ))}
@@ -790,23 +798,23 @@ const TrainerView: React.FC = () => {
 
           {/* Program Notes */}
           {weeklyPlan.program_notes && (
-            <div className="mt-6 p-4 bg-stone-50 border border-stone-200 rounded-lg">
-              <h4 className="font-bold text-stone-800 mb-2 flex items-center gap-2">
-                <Flame size={16} className="text-orange-500" />
+            <div className="mt-6 p-4 bg-secondary border border-border rounded-lg">
+              <h4 className="font-bold text-foreground mb-2 flex items-center gap-2">
+                <Flame size={16} className="text-orange-400" />
                 Program Notes
               </h4>
-              <p className="text-sm text-stone-700">{weeklyPlan.program_notes}</p>
+              <p className="text-sm text-muted-foreground">{weeklyPlan.program_notes}</p>
             </div>
           )}
 
           {/* Progression Strategy */}
           {weeklyPlan.progression_strategy && (
-            <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-              <h4 className="font-bold text-green-900 mb-2 flex items-center gap-2">
-                <TrendingUp size={16} className="text-green-600" />
+            <div className="mt-4 p-4 bg-emerald-950/30 border border-emerald-800 rounded-lg">
+              <h4 className="font-bold text-emerald-400 mb-2 flex items-center gap-2">
+                <TrendingUp size={16} className="text-emerald-400" />
                 Progression Strategy
               </h4>
-              <p className="text-sm text-green-800">{weeklyPlan.progression_strategy}</p>
+              <p className="text-sm text-emerald-400/70">{weeklyPlan.progression_strategy}</p>
             </div>
           )}
         </div>
@@ -814,12 +822,12 @@ const TrainerView: React.FC = () => {
 
       {/* Error Display */}
       {planError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6">
-          <div className="flex items-center gap-2 text-red-700 font-bold mb-2">
+        <div className="bg-red-950/50 border border-red-800 rounded-xl p-6">
+          <div className="flex items-center gap-2 text-red-400 font-bold mb-2">
             <AlertTriangle size={20} />
             <span>Failed to Load Weekly Plan</span>
           </div>
-          <p className="text-red-600 text-sm">{planError}</p>
+          <p className="text-red-400/70 text-sm">{planError}</p>
           <button
             onClick={() => fetchWeeklyPlan(false)}
             className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"

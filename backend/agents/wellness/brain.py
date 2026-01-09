@@ -96,7 +96,7 @@ def analyze_wellness(data: dict) -> dict:
         }
 
 
-def generate_wellness_chat_response(user_message: str, wellness_data: dict = None, user_profile: dict = None) -> dict:
+def generate_wellness_chat_response(user_message: str, wellness_data: dict = None, user_profile: dict = None, user_id: str = "user_123") -> dict:
     """
     Generate a wellness coach chat response using AI.
     
@@ -113,7 +113,7 @@ def generate_wellness_chat_response(user_message: str, wellness_data: dict = Non
         from tools.memory_store import get_wellness_memory, format_wellness_context
         
         # Fetch wellness context from Pinecone
-        wellness_memories = get_wellness_memory(query=user_message, top_k=3)
+        wellness_memories = get_wellness_memory(query=user_message, top_k=3, user_id=user_id)
         context = format_wellness_context(wellness_memories) if wellness_memories else "No recent wellness data available."
         
         # Build biometric context if available

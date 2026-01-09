@@ -82,9 +82,16 @@ app.add_middleware(
 
 class SessionRequest(BaseModel):
     exercise_type: str
+    user_id: str
+
+class SignupRequest(BaseModel):
+    user_id: str
+    email: str
+    name: str
 
 class ChatRequest(BaseModel):
     message: str
+    user_id: str 
 
 class NutritionRequest(BaseModel):
     goal: str
@@ -92,6 +99,7 @@ class NutritionRequest(BaseModel):
     budget: int = 500
     wellness_data: dict = {}
     fitness_coach_plan: str = ""
+    user_id: str
 
 class UserProfileRequest(BaseModel):
     """User fitness profile for personalized AI advice"""
@@ -99,10 +107,11 @@ class UserProfileRequest(BaseModel):
     phase: str = "maintenance"  # cutting, bulking, or maintenance
     protein_target: int = 150  # grams
     notes: str = ""  # Any additional context
+    user_id: str
 
 class WellnessRequest(BaseModel):
     """Biometric data for wellness analysis"""
-    user_id: str = "user_123"
+    user_id: str
     date: str = ""
     sleep_hours: float = 7.0
     hrv: int = 50  # Heart Rate Variability in ms
@@ -110,8 +119,20 @@ class WellnessRequest(BaseModel):
 
 class WeeklyPlanRequest(BaseModel):
     """Request for weekly training plan generation"""
-    user_id: str = "user_123"
+    user_id: str
     force_regenerate: bool = False  # Override cache and force new plan generation
+
+class OnboardingRequest(BaseModel):
+    """User onboarding data from initial setup"""
+    user_id: str
+    gender: str
+    age: int
+    weight: float  # in kg
+    height: float  # in cm
+    goal: str  # 'lose', 'maintain', 'gain'
+    activity_level: str  # 'sedentary', 'light', 'moderate', 'very', 'extreme'
+    calculated_calories: int
+
 
 def format_trainer_chat_response(trainer_data, log_id):
     """
@@ -181,13 +202,13 @@ def default_multiagent_orchestrator(message: str):
         "source_log_id": None
     }
 
-def generate_trainer_chat_response(user_message: str, user_profile: dict = None) -> dict:
+def generate_trainer_chat_response(user_message: str, user_profile: dict = None, user_id: str = None) -> dict:
     """
     Generate a trainer response using AI based on Pinecone exercise memory.
     """
     try:
         # Fetch exercise context from Pinecone
-        exercise_memories = get_exercise_memory(query=user_message, top_k=3)
+        exercise_memories = get_exercise_memory(query=user_message, top_k=3, user_id=user_id)
         context = format_exercise_context(exercise_memories) if exercise_memories else "No recent workout data available."
         
         # Build user profile context
@@ -249,14 +270,14 @@ Provide your analysis as the Physical Trainer."""
             "summary": "Please check trainer connection."
         }
 
-def generate_nutritionist_chat_response(user_message: str, user_profile: dict = None) -> dict:
+def generate_nutritionist_chat_response(user_message: str, user_profile: dict = None, user_id: str = None) -> dict:
     """
     Generate a nutritionist response using AI based on Pinecone memory.
     """
     try:
         # Fetch both exercise and nutrition context
-        exercise_memories = get_exercise_memory(query=user_message, top_k=2)
-        nutrition_memories = get_nutrition_memory(query=user_message, top_k=2)
+        exercise_memories = get_exercise_memory(query=user_message, top_k=2, user_id=user_id)
+        nutrition_memories = get_nutrition_memory(query=user_message, top_k=2, user_id=user_id)
         
         exercise_context = format_exercise_context(exercise_memories) if exercise_memories else "No recent workout data."
         nutrition_context = ""
@@ -370,6 +391,89 @@ def get_latest_trainer_log(exercise: str, query: str, api_key: str, pinecone_key
         print(f"Error querying Pinecone: {e}")
         return None
 
+@app.post("/api/auth/signup")
+async def signup_handler(request: SignupRequest):
+    """
+    Handle user signup: Initialize Pinecone namespace.
+    """
+    from backend.tools.memory_store import initialize_user_namespace
+    
+    print(f"📝 Signup request for: {request.name} ({request.email})")
+    
+    success = initialize_user_namespace(request.user_id, request.email, request.name)
+    
+    if success:
+        return {"status": "success", "message": "User initialized"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to initialize user namespace")
+
+
+@app.post("/api/user/onboarding")
+async def onboarding_handler(request: OnboardingRequest):
+    """
+    Store user onboarding data as user settings in Pinecone.
+    This includes physical stats and calculated calorie targets.
+    """
+    from backend.tools.memory_store import _get_index, _get_embeddings
+    import time
+    
+    print(f"📋 Onboarding data received for user: {request.user_id}")
+    
+    try:
+        index = _get_index()
+        embeddings = _get_embeddings()
+        
+        # Create onboarding settings document
+        onboarding_text = f"""User Onboarding Settings:
+Gender: {request.gender}
+Age: {request.age} years
+Weight: {request.weight} kg
+Height: {request.height} cm
+Fitness Goal: {request.goal}
+Activity Level: {request.activity_level}
+Calculated Daily Calories: {request.calculated_calories} kcal
+
+This user is aiming to {request.goal} weight with a {request.activity_level} activity level.
+"""
+        
+        # Embed the settings
+        vector = embeddings.embed_query(onboarding_text)
+        
+        # Prepare metadata
+        metadata = {
+            "type": "user_settings",
+            "gender": request.gender,
+            "age": request.age,
+            "weight": request.weight,
+            "height": request.height,
+            "goal": request.goal,
+            "activity_level": request.activity_level,
+            "calculated_calories": request.calculated_calories,
+            "created_timestamp": int(time.time()),
+            "text": onboarding_text
+        }
+        
+        # Store in Pinecone under user's namespace
+        vector_id = f"onboarding_{request.user_id}_{int(time.time())}"
+        
+        index.upsert(
+            vectors=[(vector_id, vector, metadata)],
+            namespace=request.user_id
+        )
+        
+        print(f"✅ Onboarding data saved for user {request.user_id}")
+        print(f"   Calories: {request.calculated_calories} kcal, Goal: {request.goal}")
+        
+        return {
+            "status": "success",
+            "message": "Onboarding data saved successfully",
+            "calories": request.calculated_calories
+        }
+        
+    except Exception as e:
+        print(f"❌ Error saving onboarding data: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save onboarding data: {str(e)}")
+
 @app.post("/api/chat")
 async def chat_handler(request: ChatRequest):
     """
@@ -387,7 +491,7 @@ async def chat_handler(request: ChatRequest):
     print(f"Chat request received: {request.message[:50]}...")
     
     # Fetch user profile for personalized responses
-    user_profile = get_user_profile()
+    user_profile = get_user_profile(user_id=request.user_id)
     if user_profile:
         print(f"📋 User profile loaded: {user_profile.get('calories')} cal, phase: {user_profile.get('phase')}")
     else:
@@ -398,7 +502,7 @@ async def chat_handler(request: ChatRequest):
     
     # 1. Physical Trainer (AI-powered with Pinecone context + user profile)
     try:
-        trainer_response = generate_trainer_chat_response(request.message, user_profile)
+        trainer_response = generate_trainer_chat_response(request.message, user_profile, user_id=request.user_id)
         agent_responses.append(trainer_response)
         print(f"✅ Trainer response generated")
     except Exception as e:
@@ -411,7 +515,7 @@ async def chat_handler(request: ChatRequest):
     
     # 2. Nutritionist (AI-powered with Pinecone context + user profile)
     try:
-        nutritionist_response = generate_nutritionist_chat_response(request.message, user_profile)
+        nutritionist_response = generate_nutritionist_chat_response(request.message, user_profile, user_id=request.user_id)
         agent_responses.append(nutritionist_response)
         print(f"✅ Nutritionist response generated")
     except Exception as e:
@@ -424,7 +528,7 @@ async def chat_handler(request: ChatRequest):
     
     # 3. Wellness Agent (AI-powered with biometric analysis)
     try:
-        wellness_response = generate_wellness_chat_response(request.message, user_profile=user_profile)
+        wellness_response = generate_wellness_chat_response(request.message, user_profile=user_profile, user_id=request.user_id)
         agent_responses.append(wellness_response)
         print(f"✅ Wellness response generated")
     except Exception as e:
@@ -441,7 +545,7 @@ async def chat_handler(request: ChatRequest):
         "manager_decision": "Based on all agent inputs, the recommended action has been synthesized. Please review individual agent recommendations above."
     }
 
-def get_user_profile() -> dict:
+def get_user_profile(user_id: str = None) -> dict:
     """Fetch the latest user profile from Pinecone."""
     try:
         from tools.memory_store import _get_index, _get_embeddings
@@ -455,7 +559,8 @@ def get_user_profile() -> dict:
         results = index.query(
             vector=query_vector,
             top_k=5,
-            include_metadata=True
+            include_metadata=True,
+            namespace=user_id
         )
         
         # Find user_profile type
@@ -474,13 +579,13 @@ def get_user_profile() -> dict:
         print(f"Error fetching user profile: {e}")
         return None
 
-def get_wellness_data() -> dict:
+def get_wellness_data(user_id: str = None) -> dict:
     """Fetch the latest wellness data from Pinecone (stored by wellness agent)."""
     try:
         from tools.memory_store import get_wellness_memory
         
         # Use the proper wellness memory retrieval function
-        wellness_logs = get_wellness_memory(query="recent wellness readiness", top_k=1)
+        wellness_logs = get_wellness_memory(query="recent wellness readiness", top_k=1, user_id=user_id)
         
         # Default values
         wellness_data = {
@@ -539,7 +644,7 @@ def get_wellness_data() -> dict:
         return {"sleep_score": 70, "stress_level": "Moderate", "hrv": "Normal", "readiness": "Good"}
 
 
-def detect_injury_from_history(user_id: str = "user_123") -> bool:
+def detect_injury_from_history(user_id: str = None) -> bool:
     """
     Detect if user has an injury based on wellness and exercise history.
     
@@ -555,7 +660,7 @@ def detect_injury_from_history(user_id: str = "user_123") -> bool:
         from tools.memory_store import get_wellness_memory, get_exercise_memory
         
         # Check wellness data for low readiness
-        wellness_logs = get_wellness_memory(query="recent wellness readiness", top_k=5)
+        wellness_logs = get_wellness_memory(query="recent wellness readiness", top_k=5, user_id=user_id)
         low_readiness_count = 0
         
         for log in wellness_logs:
@@ -575,7 +680,7 @@ def detect_injury_from_history(user_id: str = "user_123") -> bool:
             return True
         
         # Check exercise data for form issues
-        exercise_logs = get_exercise_memory(query="recent workout form", top_k=5)
+        exercise_logs = get_exercise_memory(query="recent workout form", top_k=5, user_id=user_id)
         poor_form_count = 0
         
         for log in exercise_logs:
@@ -1018,12 +1123,170 @@ async def save_user_profile(request: UserProfileRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/profile")
-async def get_profile():
+async def get_profile(user_id: str):
     """Get the current user profile."""
-    profile = get_user_profile()
+    profile = get_user_profile(user_id=user_id)
     if profile:
         return {"status": "success", "profile": profile}
     return {"status": "not_found", "profile": None}
+
+
+@app.get("/api/dashboard/metrics")
+async def get_dashboard_metrics(user_id: str):
+    """
+    Fetch dashboard metrics from Pinecone.
+    Returns wellness data, user profile, and recent agent activity logs.
+    """
+    try:
+        from tools.memory_store import get_wellness_memory, get_exercise_memory, get_nutrition_memory
+        
+        # 1. Fetch wellness data (sleep, HRV, RHR, readiness)
+        wellness_logs = get_wellness_memory(query="recent wellness readiness biometrics", top_k=1, user_id=user_id)
+        
+        # Only populate wellness data if we have actual logs
+        wellness_data = None
+        has_wellness_data = wellness_logs and len(wellness_logs) > 0
+        
+        if has_wellness_data:
+            latest = wellness_logs[0]
+            wellness_data = {
+                "sleep_hours": latest.get("sleep_hours", 7.0),
+                "hrv": latest.get("hrv", 50),
+                "rhr": latest.get("rhr", 65),
+                "readiness_score": latest.get("readiness_score", 70),
+                "stress_score": 50  # Will be calculated below
+            }
+            
+            # Calculate stress score from RHR (inverse relationship: lower RHR = lower stress)
+            rhr = latest.get("rhr", 65)
+            if rhr <= 55:
+                wellness_data["stress_score"] = 25  # Low stress
+            elif rhr <= 65:
+                wellness_data["stress_score"] = 45  # Moderate stress
+            elif rhr <= 75:
+                wellness_data["stress_score"] = 65  # Elevated stress
+            else:
+                wellness_data["stress_score"] = 80  # High stress
+        else:
+            print("⚠️ No wellness logs found for user", user_id)
+
+        # 2. Fetch user profile
+        user_profile = get_user_profile(user_id=user_id)
+        user_data = {
+            "name": "Dr. A. Sharma",
+            "status": "Stable",
+            "bmi": 22.4,
+            "resting_hr": wellness_data["rhr"] if wellness_data else 65,
+            "phase": "maintenance",
+            "calories": 2000
+        }
+        
+        if user_profile:
+            user_data["phase"] = user_profile.get("phase", "maintenance")
+            user_data["calories"] = user_profile.get("calories", 2000)
+        
+        # 3. Fetch recent agent activity for logs
+        exercise_logs = get_exercise_memory(query="recent workout session", top_k=2, user_id=user_id)
+        nutrition_logs = get_nutrition_memory(query="recent meal plan", top_k=2, user_id=user_id)
+        
+        agent_logs = []
+        
+        # Add trainer logs
+        if exercise_logs:
+            for log in exercise_logs[:1]:  # Latest only
+                issues = log.get("issues", [])
+                if issues:
+                    agent_logs.append({
+                        "type": "trainer",
+                        "message": f"Form issue detected: {', '.join(issues[:2])}",
+                        "severity": "warning"
+                    })
+                else:
+                    agent_logs.append({
+                        "type": "trainer",
+                        "message": f"Training load adjustment in progress ({log.get('reps', 0)} reps logged)",
+                        "severity": "info"
+                    })
+        
+        # Add nutritionist logs
+        if nutrition_logs:
+            for log in nutrition_logs[:1]:
+                agent_logs.append({
+                    "type": "nutritionist",
+                    "message": f"Reviewing dietary plan - {log.get('goal', 'General wellness')}",
+                    "severity": "info"
+                })
+        
+        # Add wellness log
+        if has_wellness_data:
+            readiness = wellness_data["readiness_score"]
+            if readiness >= 80:
+                agent_logs.append({
+                    "type": "wellness",
+                    "message": "Recovery status optimal - ready for training",
+                    "severity": "success"
+                })
+            elif readiness >= 60:
+                agent_logs.append({
+                    "type": "wellness",
+                    "message": "Moderate recovery - consider reduced intensity",
+                    "severity": "info"
+                })
+            else:
+                agent_logs.append({
+                    "type": "wellness",
+                    "message": "Low recovery detected - rest recommended",
+                    "severity": "warning"
+                })
+        
+        # Default logs if none available
+        if not agent_logs:
+            agent_logs = [
+                {"type": "trainer", "message": "Training load adjustment in progress", "severity": "info"},
+                {"type": "nutritionist", "message": "Reviewing dietary plan", "severity": "info"},
+                {"type": "wellness", "message": "Monitoring biometric data", "severity": "info"}
+            ]
+        
+        if wellness_data:
+            print(f"📊 Dashboard metrics fetched: sleep={wellness_data['sleep_hours']}h, readiness={wellness_data['readiness_score']}")
+        else:
+            print(f"📊 Dashboard metrics fetched: No wellness data available")
+        
+        return {
+            "status": "success",
+            "wellness": wellness_data,  # Will be None if no data
+            "user": user_data,
+            "agent_logs": agent_logs
+        }
+        
+    except Exception as e:
+        print(f"❌ Error fetching dashboard metrics: {e}")
+        # Return reasonable defaults on error
+        return {
+            "status": "error",
+            "message": str(e),
+            "wellness": {
+                "sleep_hours": 7.0,
+                "stress_score": 50,
+                "readiness_score": 70,
+                "hrv": 50,
+                "rhr": 65
+            },
+            "user": {
+                "name": "Dr. A. Sharma",
+                "status": "Stable",
+                "bmi": 22.4,
+                "resting_hr": 65,
+                "phase": "maintenance",
+                "calories": 2000
+            },
+            "agent_logs": [
+                {"type": "trainer", "message": "Training load adjustment in progress", "severity": "info"},
+                {"type": "nutritionist", "message": "Reviewing dietary plan", "severity": "info"},
+                {"type": "wellness", "message": "Monitoring biometric data", "severity": "info"}
+            ]
+        }
+
 
 @app.post("/api/wellness/analyze")
 async def analyze_wellness_data(request: WellnessRequest):
@@ -1106,8 +1369,8 @@ async def get_weekly_training_plan(request: WeeklyPlanRequest):
         print(f"🏋️ Weekly plan request for user {request.user_id}, force_regenerate={request.force_regenerate}")
         
         # Fetch user profile and wellness data for context
-        user_profile = get_user_profile()
-        wellness_data = get_wellness_data()
+        user_profile = get_user_profile(user_id=request.user_id)
+        wellness_data = get_wellness_data(user_id=request.user_id)
         
         # Check for existing plan
         cached_plan = get_training_plan_memory(user_id=request.user_id)
@@ -1233,7 +1496,7 @@ async def start_nutrition_session(request: NutritionRequest):
         # Initialize data loader and retriever with CORRECT PATHS (backend/data)
         data_dir = os.path.join(os.path.dirname(__file__), "data")
         csv_path = os.path.join(data_dir, "Indian_Food_Nutrition_Processed.csv")
-        json_path = os.path.join(data_dir, "indian_food_rag_dataset_delivery_pricing.json")
+        json_path = os.path.join(data_dir, "indian_gym_friendly_nutrition_rag_dataset_TOP_NOTCH_v5.1.json")
         
         # Load Data
         data_loader = FoodDataLoader(csv_path, json_path)
@@ -1326,6 +1589,7 @@ async def get_timeline():
 @app.post("/api/trainer/start")
 def start_training_session(request: SessionRequest):
     exercise_choice = request.exercise_type
+    user_id = request.user_id
     
     # Check if API keys are set
     api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
@@ -1405,6 +1669,7 @@ def start_training_session(request: SessionRequest):
                 content=memory_text,
                 metadata={
                     "type": "exercise_log",
+                    "user_id": user_id,
                     "exercise": exercise_choice,
                     "reps": total_reps, 
                     "rating": form_rating,

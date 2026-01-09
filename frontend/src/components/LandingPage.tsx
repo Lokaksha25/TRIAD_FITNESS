@@ -10,7 +10,7 @@ const LandingPage: React.FC = () => {
     const navigate = useNavigate();
 
     const handleDiscoverClick = () => {
-        navigate('/chat');
+        navigate('/auth');
     };
 
     return (
@@ -31,10 +31,10 @@ const LandingPage: React.FC = () => {
                     </div>
 
                     <h1 className="text-4xl md:text-6xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400 leading-tight">
-                        Your one-stop solution for achieving your fitness goals  
+                        Your one-stop solution for achieving your fitness goals
                     </h1>
                     <p className="mt-4 text-neutral-300 max-w-lg text-lg">
-AI-powered nutrition, training, and wellness — all in one place.                    </p>
+                        AI-powered nutrition, training, and wellness — all in one place.                    </p>
 
                     <div className="mt-8">
                         <Button

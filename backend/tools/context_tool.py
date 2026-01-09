@@ -9,6 +9,7 @@ class FitnessHistoryTool(BaseTool):
         "Semantic Search Engine. Retrieves historical data, nutrition, and wellness context "
         "from the Cloud Database. Use this to check for 'Fasted' status or 'Previous Injuries'."
     )
+    user_id: str = "user_123"
 
     def _run(self, query: str) -> str:
         try:
@@ -28,7 +29,8 @@ class FitnessHistoryTool(BaseTool):
             search_response = index.query(
                 vector=query_vector,
                 top_k=3,
-                include_metadata=True
+                include_metadata=True,
+                namespace=self.user_id
             )
             
             # 4. Format Results

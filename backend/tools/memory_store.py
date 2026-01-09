@@ -12,12 +12,34 @@ All agents use the same Pinecone index with `agent_type` metadata for filtering.
 import os
 import time
 import json
+import hashlib
 from pinecone import Pinecone
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path='../.env.local')
 load_dotenv()
+
+
+def get_namespace_id(user_id: str) -> str:
+    """
+    Hash the user_id to create a secure, opaque namespace identifier.
+    
+    This prevents exposing raw Firebase UIDs in Pinecone while still
+    maintaining user data isolation.
+    
+    Args:
+        user_id: The raw Firebase UID
+        
+    Returns:
+        A SHA256 hash of the user_id combined with a secret salt
+    """
+    # Get salt from environment, with a fallback for development
+    salt = os.environ.get("USER_ID_SALT", "triad-fitness-default-salt-change-in-production")
+    
+    # Create hash
+    combined = f"{user_id}{salt}"
+    return hashlib.sha256(combined.encode()).hexdigest()
 
 
 def _get_embeddings():
@@ -35,7 +57,7 @@ def _get_index():
     return pc.Index(os.environ["PINECONE_INDEX_NAME"])
 
 
-def save_agent_memory(agent_type: str, content: str, metadata: dict = None) -> str:
+def save_agent_memory(agent_type: str, content: str, metadata: dict = None, user_id: str = "user_123") -> str:
     """
     Save an agent's output to Pinecone for cross-agent retrieval.
     
@@ -70,13 +92,17 @@ def save_agent_memory(agent_type: str, content: str, metadata: dict = None) -> s
         # Embed and upsert
         vector_values = embeddings.embed_query(content)
         
-        index.upsert(vectors=[{
-            "id": log_id,
-            "values": vector_values,
-            "metadata": full_metadata
-        }])
+        # UPSERT WITH NAMESPACE
+        index.upsert(
+            vectors=[{
+                "id": log_id,
+                "values": vector_values,
+                "metadata": full_metadata
+            }],
+            namespace=get_namespace_id(user_id)  # Hashed for security
+        )
         
-        print(f"✅ Saved {agent_type} memory: {log_id}")
+        print(f"✅ Saved {agent_type} memory: {log_id} (User: {user_id[:8]}...)")
         return log_id
         
     except Exception as e:
@@ -84,7 +110,7 @@ def save_agent_memory(agent_type: str, content: str, metadata: dict = None) -> s
         return None
 
 
-def get_exercise_memory(query: str = "recent workout session", top_k: int = 3) -> list:
+def get_exercise_memory(query: str = "recent workout session", top_k: int = 3, user_id: str = "user_123") -> list:
     """
     Retrieve exercise/trainer memories for the Nutritionist to reference.
     
@@ -106,7 +132,8 @@ def get_exercise_memory(query: str = "recent workout session", top_k: int = 3) -
         results = index.query(
             vector=query_vector,
             top_k=top_k * 2,  # Fetch more to filter
-            include_metadata=True
+            include_metadata=True,
+            namespace=get_namespace_id(user_id)  # Hashed for security
         )
         
         # Filter for trainer/exercise logs
@@ -136,7 +163,7 @@ def get_exercise_memory(query: str = "recent workout session", top_k: int = 3) -
         return []
 
 
-def get_nutrition_memory(query: str = "recent meal plan", top_k: int = 3) -> list:
+def get_nutrition_memory(query: str = "recent meal plan", top_k: int = 3, user_id: str = "user_123") -> list:
     """
     Retrieve nutrition/meal plan memories for the Trainer to reference.
     
@@ -157,7 +184,8 @@ def get_nutrition_memory(query: str = "recent meal plan", top_k: int = 3) -> lis
         results = index.query(
             vector=query_vector,
             top_k=top_k * 2,
-            include_metadata=True
+            include_metadata=True,
+            namespace=get_namespace_id(user_id)  # Hashed for security
         )
         
         # Filter for nutritionist type
@@ -230,7 +258,7 @@ def format_nutrition_context(nutrition_memories: list) -> str:
     return "\n".join(context_parts)
 
 
-def get_wellness_memory(query: str = "recent wellness biometric analysis", top_k: int = 3) -> list:
+def get_wellness_memory(query: str = "recent wellness biometric analysis", top_k: int = 3, user_id: str = "user_123") -> list:
     """
     Retrieve wellness/biometric memories for cross-agent context sharing.
     
@@ -251,7 +279,8 @@ def get_wellness_memory(query: str = "recent wellness biometric analysis", top_k
         results = index.query(
             vector=query_vector,
             top_k=top_k * 2,
-            include_metadata=True
+            include_metadata=True,
+            namespace=get_namespace_id(user_id)  # Hashed for security
         )
         
         # Filter for wellness logs
@@ -327,7 +356,8 @@ def get_training_plan_memory(user_id: str = "user_123", top_k: int = 1) -> dict:
         results = index.query(
             vector=query_vector,
             top_k=top_k * 3,  # Fetch more to filter
-            include_metadata=True
+            include_metadata=True,
+            namespace=get_namespace_id(user_id)  # Hashed for security
         )
         
         # Filter for training_plan type
@@ -392,15 +422,63 @@ def save_training_plan(user_id: str, plan_data: str, exercises: list, injury_det
         # Embed and upsert
         vector_values = embeddings.embed_query(plan_data)
         
-        index.upsert(vectors=[{
-            "id": log_id,
-            "values": vector_values,
-            "metadata": metadata
-        }])
+        index.upsert(
+            vectors=[{
+                "id": log_id,
+                "values": vector_values,
+                "metadata": metadata
+            }],
+            namespace=get_namespace_id(user_id)  # Hashed for security
+        )
         
-        print(f"✅ Saved training plan: {log_id} for user {user_id}")
         return log_id
         
     except Exception as e:
         print(f"❌ Error saving training plan: {e}")
         return None
+
+def initialize_user_namespace(user_id: str, email: str, name: str) -> bool:
+    """
+    Initialize a Pinecone namespace for a new user.
+    Creates a 'user_profile' metadata entry to ensure the namespace exists.
+    """
+    try:
+        index = _get_index()
+        embeddings = _get_embeddings()
+        
+        # Create a default user profile text
+        profile_text = f"User Profile for {name} ({email}). Fitness journey start."
+        
+        # Generate ID
+        log_id = f"user_profile_{int(time.time())}"
+        
+        # Metadata
+        metadata = {
+            "type": "user_profile",
+            "agent_type": "system",
+            "created_at": time.time(),
+            "email": email,
+            "name": name,
+            "text": profile_text,
+            "calories": 2000, # Default
+            "phase": "maintenance" # Default
+        }
+        
+        # Embed and upsert
+        vector_values = embeddings.embed_query(profile_text)
+        
+        index.upsert(
+            vectors=[{
+                "id": log_id,
+                "values": vector_values,
+                "metadata": metadata
+            }],
+            namespace=get_namespace_id(user_id)  # Hashed for security
+        )
+        
+        print(f"✅ User namespace initialized for {user_id}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error initializing user namespace: {e}")
+        return False

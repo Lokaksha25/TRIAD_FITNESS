@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { 
-  CheckCircle, AlertTriangle, Activity, Clock, Moon, Brain, Heart, 
+import {
+  CheckCircle, AlertTriangle, Activity, Clock, Moon, Brain, Heart,
   Target, Dumbbell, Flame, Zap, ChevronDown, FileText, TrendingUp,
   User, Calendar, Utensils
 } from 'lucide-react';
@@ -82,8 +82,8 @@ const parseAgentReport = (text: string): ParsedReport => {
 
   // --- Extract Title ---
   // Matches: "## Hyper-Personalized Pushup Session" or "### 1. Title"
-  const titleMatch = text.match(/^##\s*(.+?)(?:\n|$)/m) || 
-                     text.match(/^###?\s*\d*\.?\s*(.+?)(?:\n|$)/m);
+  const titleMatch = text.match(/^##\s*(.+?)(?:\n|$)/m) ||
+    text.match(/^###?\s*\d*\.?\s*(.+?)(?:\n|$)/m);
   if (titleMatch) {
     result.title = titleMatch[1].replace(/\*\*/g, '').trim();
   }
@@ -92,17 +92,17 @@ const parseAgentReport = (text: string): ParsedReport => {
   const contextMatch = text.match(/\*?\*?Context Analysis\*?\*?:?\s*([\s\S]*?)(?=\*?\*?Form Report|$)/i);
   if (contextMatch) {
     const ctx = contextMatch[1];
-    
+
     // Extract sleep hours
     const sleepMatch = ctx.match(/(\d+)\s*hours?/i) || ctx.match(/sleep\s*\((\d+)/i);
-    
+
     // Extract time slot
-    const timeMatch = ctx.match(/(\d+)-minute\s*free\s*slot/i) || 
-                      ctx.match(/(\d+:\d+)\s*-\s*(\d+:\d+)/);
-    
+    const timeMatch = ctx.match(/(\d+)-minute\s*free\s*slot/i) ||
+      ctx.match(/(\d+:\d+)\s*-\s*(\d+:\d+)/);
+
     result.contextAnalysis = {
-      calorieState: ctx.toLowerCase().includes('fasted') ? 'Fasted' : 
-                    ctx.toLowerCase().includes('deficit') ? 'Deficit' : 'Fed',
+      calorieState: ctx.toLowerCase().includes('fasted') ? 'Fasted' :
+        ctx.toLowerCase().includes('deficit') ? 'Deficit' : 'Fed',
       sleepHours: sleepMatch ? parseInt(sleepMatch[1]) : 7,
       stressLevel: ctx.toLowerCase().includes('high') && ctx.toLowerCase().includes('stress') ? 'High' : 'Moderate',
       hrv: ctx.toLowerCase().includes('low hrv') ? 'Low' : 'Normal',
@@ -116,7 +116,7 @@ const parseAgentReport = (text: string): ParsedReport => {
   const formMatch = text.match(/\*?\*?Form Report\*?\*?:?\s*([\s\S]*?)(?=\*?\*?The Prescribed Session|$)/i);
   if (formMatch) {
     const formText = formMatch[1];
-    
+
     // Extract reps - multiple patterns
     const repsPatterns = [
       /performed\s+(\d+)\s+(pushups?|squats?|reps?)/i,
@@ -124,10 +124,10 @@ const parseAgentReport = (text: string): ParsedReport => {
       /You\s+(?:did|performed|completed)\s+(\d+)/i,
       /(\d+)\s+(pushups?|squats?)/i,
     ];
-    
+
     let totalReps = 0;
     let exerciseType = 'Exercise';
-    
+
     for (const pattern of repsPatterns) {
       const match = formText.match(pattern);
       if (match) {
@@ -136,7 +136,7 @@ const parseAgentReport = (text: string): ParsedReport => {
         break;
       }
     }
-    
+
     // Count issues
     const issues: string[] = [];
     if (formText.toLowerCase().includes('hip sag') || formText.toLowerCase().includes('sagging')) {
@@ -151,11 +151,11 @@ const parseAgentReport = (text: string): ParsedReport => {
     if (formText.toLowerCase().includes('shallow')) {
       issues.push('Shallow Depth');
     }
-    
+
     // Count good/bad reps mentioned
     const goodRepsMatch = formText.match(/Reps?\s*(\d+(?:,\s*\d+)*(?:\s*and\s*\d+)?)\s*showed\s*(?:improved|good)/i);
     const badRepsMatch = formText.match(/Reps?\s*(\d+(?:\s*and\s*\d+)?)\s*showed\s*(?:hip\s*sag|issues)/i);
-    
+
     result.formReport = {
       exerciseType: exerciseType.charAt(0).toUpperCase() + exerciseType.slice(1),
       totalReps,
@@ -214,23 +214,23 @@ const parseAgentReport = (text: string): ParsedReport => {
 const parseWorkoutSection = (title: string, text: string): WorkoutSection => {
   const exercises: ExerciseItem[] = [];
   const notes: string[] = [];
-  
+
   // Extract exercise items (lines starting with *)
   const exerciseMatches = text.matchAll(/\*\s*\*?\*?([^:*\n]+)\*?\*?:?\s*([^\n]*)/g);
-  
+
   for (const match of exerciseMatches) {
     const name = match[1].replace(/\*\*/g, '').trim();
     const details = match[2].replace(/\*\*/g, '').trim();
-    
+
     // Skip sub-items (indented) for now
     if (name && !name.startsWith(' ')) {
       exercises.push({ name, details });
     }
   }
-  
+
   // Extract duration from title if present
   const durationMatch = title.match(/\(([^)]+)\)/);
-  
+
   return {
     title: title.replace(/\([^)]*\)/, '').trim(),
     duration: durationMatch ? durationMatch[1] : '',
@@ -248,11 +248,11 @@ interface StatusBadgeProps {
 
 const StatusBadge: React.FC<StatusBadgeProps> = ({ status, text }) => {
   const colors = {
-    good: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    warning: 'bg-amber-100 text-amber-700 border-amber-200',
-    bad: 'bg-red-100 text-red-700 border-red-200',
+    good: 'bg-emerald-950/50 text-emerald-400 border-emerald-800',
+    warning: 'bg-amber-950/50 text-amber-400 border-amber-800',
+    bad: 'bg-red-950/50 text-red-400 border-red-800',
   };
-  
+
   return (
     <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${colors[status]}`}>
       {text}
@@ -269,11 +269,11 @@ interface MetricCardProps {
 
 const MetricCard: React.FC<MetricCardProps> = ({ icon, label, value, status = 'good' }) => {
   const colors = {
-    good: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-    warning: 'bg-amber-50 border-amber-200 text-amber-700',
-    bad: 'bg-red-50 border-red-200 text-red-700',
+    good: 'bg-emerald-950/50 border-emerald-800 text-emerald-400',
+    warning: 'bg-amber-950/50 border-amber-800 text-amber-400',
+    bad: 'bg-red-950/50 border-red-800 text-red-400',
   };
-  
+
   return (
     <div className={`p-4 rounded-xl border ${colors[status]}`}>
       <div className="flex items-center gap-2 mb-1 opacity-75">
@@ -294,28 +294,28 @@ interface CollapsibleProps {
   children: React.ReactNode;
 }
 
-const Collapsible: React.FC<CollapsibleProps> = ({ 
-  title, icon, badge, badgeStatus = 'good', defaultOpen = false, children 
+const Collapsible: React.FC<CollapsibleProps> = ({
+  title, icon, badge, badgeStatus = 'good', defaultOpen = false, children
 }) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
-  
+
   return (
-    <div className="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
-      <button 
+    <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+      <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-5 py-4 flex items-center justify-between hover:bg-stone-50 transition-colors"
+        className="w-full px-5 py-4 flex items-center justify-between hover:bg-secondary transition-colors"
       >
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-slate-100 to-stone-100 flex items-center justify-center">
+          <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center border border-border">
             {icon}
           </div>
-          <span className="font-semibold text-stone-800">{title}</span>
+          <span className="font-semibold text-foreground">{title}</span>
           {badge && <StatusBadge status={badgeStatus} text={badge} />}
         </div>
-        <ChevronDown className={`text-stone-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} size={20} />
+        <ChevronDown className={`text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} size={20} />
       </button>
       {isOpen && (
-        <div className="px-5 pb-5 border-t border-stone-100">
+        <div className="px-5 pb-5 border-t border-border">
           {children}
         </div>
       )}
@@ -333,32 +333,32 @@ interface TrainerReportProps {
   saveStatus: string;
 }
 
-const TrainerReport: React.FC<TrainerReportProps> = ({ 
-  plan, totalReps, detectedIssues, formRating, saveStatus 
+const TrainerReport: React.FC<TrainerReportProps> = ({
+  plan, totalReps, detectedIssues, formRating, saveStatus
 }) => {
   const parsed = parseAgentReport(plan);
-  
+
   // Use server-provided totalReps if available, otherwise use parsed
   const displayReps = totalReps > 0 ? totalReps : (parsed.formReport?.totalReps ?? 0);
-  
+
   // If nothing was parsed, show fallback
   if (!parsed.title && !parsed.contextAnalysis && !parsed.formReport) {
     return (
-      <div className="bg-white border border-stone-200 rounded-xl p-6">
-        <h3 className="font-bold text-lg mb-4 text-stone-800">Trainer Report</h3>
-        <pre className="whitespace-pre-wrap text-stone-600 text-sm leading-relaxed">
+      <div className="bg-card border border-border rounded-xl p-6">
+        <h3 className="font-bold text-lg mb-4 text-foreground">Trainer Report</h3>
+        <pre className="whitespace-pre-wrap text-muted-foreground text-sm leading-relaxed">
           {plan}
         </pre>
       </div>
     );
   }
-  
+
   return (
     <div className="space-y-4 animate-in slide-in-from-bottom-10 duration-500">
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-xl p-6 text-white">
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-xl p-6 text-white border border-slate-700">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center">
+          <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center border border-white/20">
             <Dumbbell className="text-white" size={24} />
           </div>
           <div>
@@ -370,7 +370,7 @@ const TrainerReport: React.FC<TrainerReportProps> = ({
             )}
           </div>
         </div>
-        
+
         {parsed.goal && (
           <div className="mt-4 p-4 bg-white/5 rounded-lg border border-white/10">
             <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold mb-1">
@@ -381,35 +381,35 @@ const TrainerReport: React.FC<TrainerReportProps> = ({
           </div>
         )}
       </div>
-      
+
       {/* Wellness Metrics Grid */}
       {parsed.contextAnalysis && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <MetricCard 
+          <MetricCard
             icon={<Moon size={16} />}
             label="Sleep"
             value={`${parsed.contextAnalysis.sleepHours}h`}
             status={parsed.contextAnalysis.sleepHours >= 7 ? 'good' : parsed.contextAnalysis.sleepHours >= 5 ? 'warning' : 'bad'}
           />
-          <MetricCard 
+          <MetricCard
             icon={<Brain size={16} />}
             label="Stress"
             value={parsed.contextAnalysis.stressLevel}
             status={parsed.contextAnalysis.stressLevel === 'Low' ? 'good' : parsed.contextAnalysis.stressLevel === 'Moderate' ? 'warning' : 'bad'}
           />
-          <MetricCard 
+          <MetricCard
             icon={<Heart size={16} />}
             label="HRV"
             value={parsed.contextAnalysis.hrv}
             status={parsed.contextAnalysis.hrv === 'Normal' ? 'good' : 'warning'}
           />
-          <MetricCard 
+          <MetricCard
             icon={<Utensils size={16} />}
             label="State"
             value={parsed.contextAnalysis.calorieState}
             status={parsed.contextAnalysis.calorieState === 'Fed' ? 'good' : 'warning'}
           />
-          <MetricCard 
+          <MetricCard
             icon={<Clock size={16} />}
             label="Available"
             value={parsed.contextAnalysis.timeSlot}
@@ -417,162 +417,162 @@ const TrainerReport: React.FC<TrainerReportProps> = ({
           />
         </div>
       )}
-      
+
       {/* Form Report Card */}
       {parsed.formReport && (
-        <div className="bg-white border border-stone-200 rounded-xl p-5 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center">
-                <TrendingUp className="text-blue-600" size={20} />
+              <div className="w-10 h-10 rounded-lg bg-blue-950/50 flex items-center justify-center border border-blue-800">
+                <TrendingUp className="text-blue-400" size={20} />
               </div>
               <div>
-                <h3 className="font-bold text-stone-800">Form Analysis</h3>
-                <p className="text-sm text-stone-500">{parsed.formReport.exerciseType}</p>
+                <h3 className="font-bold text-foreground">Form Analysis</h3>
+                <p className="text-sm text-muted-foreground">{parsed.formReport.exerciseType}</p>
               </div>
             </div>
-            <StatusBadge 
-              status={parsed.formReport.issues.length === 0 ? 'good' : 'warning'} 
-              text={parsed.formReport.issues.length === 0 ? 'Excellent' : 'Needs Work'} 
+            <StatusBadge
+              status={parsed.formReport.issues.length === 0 ? 'good' : 'warning'}
+              text={parsed.formReport.issues.length === 0 ? 'Excellent' : 'Needs Work'}
             />
           </div>
-          
+
           <div className="grid grid-cols-3 gap-4 mb-4">
-            <div className="text-center p-4 bg-stone-50 rounded-xl">
-              <p className="text-3xl font-bold text-stone-800">{displayReps}</p>
-              <p className="text-xs text-stone-500 mt-1">Total Reps</p>
+            <div className="text-center p-4 bg-secondary rounded-xl border border-border">
+              <p className="text-3xl font-bold text-foreground">{displayReps}</p>
+              <p className="text-xs text-muted-foreground mt-1">Total Reps</p>
             </div>
-            <div className="text-center p-4 bg-emerald-50 rounded-xl">
-              <p className="text-3xl font-bold text-emerald-600">{parsed.formReport.goodReps}</p>
-              <p className="text-xs text-stone-500 mt-1">Good Form</p>
+            <div className="text-center p-4 bg-emerald-950/50 rounded-xl border border-emerald-800">
+              <p className="text-3xl font-bold text-emerald-400">{parsed.formReport.goodReps}</p>
+              <p className="text-xs text-muted-foreground mt-1">Good Form</p>
             </div>
-            <div className="text-center p-4 bg-amber-50 rounded-xl">
-              <p className="text-3xl font-bold text-amber-600">{parsed.formReport.badReps}</p>
-              <p className="text-xs text-stone-500 mt-1">Needs Work</p>
+            <div className="text-center p-4 bg-amber-950/50 rounded-xl border border-amber-800">
+              <p className="text-3xl font-bold text-amber-400">{parsed.formReport.badReps}</p>
+              <p className="text-xs text-muted-foreground mt-1">Needs Work</p>
             </div>
           </div>
-          
+
           {parsed.formReport.issues.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {parsed.formReport.issues.map((issue, idx) => (
-                <span key={idx} className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm">
+                <span key={idx} className="px-3 py-1 bg-amber-950/50 text-amber-400 rounded-full text-sm border border-amber-800">
                   {issue}
                 </span>
               ))}
             </div>
           )}
-          
+
           {/* Detailed form analysis */}
-          <div className="mt-4 pt-4 border-t border-stone-100">
-            <p className="text-sm text-stone-600 leading-relaxed">{parsed.formReport.rawText}</p>
+          <div className="mt-4 pt-4 border-t border-border">
+            <p className="text-sm text-muted-foreground leading-relaxed">{parsed.formReport.rawText}</p>
           </div>
         </div>
       )}
-      
+
       {/* Workout Sections */}
       <div className="space-y-3">
         {/* Warm-up */}
         {parsed.warmup && parsed.warmup.exercises.length > 0 && (
-          <Collapsible 
-            title="Warm-up" 
-            icon={<Flame className="text-amber-500" size={18} />}
+          <Collapsible
+            title="Warm-up"
+            icon={<Flame className="text-amber-400" size={18} />}
             badge={parsed.warmup.duration || `${parsed.warmup.exercises.length} exercises`}
             badgeStatus="warning"
           >
             <div className="pt-4 space-y-3">
               {parsed.warmup.exercises.map((ex, idx) => (
-                <div key={idx} className="flex items-start gap-3 p-3 bg-stone-50 rounded-lg">
-                  <div className="w-6 h-6 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                <div key={idx} className="flex items-start gap-3 p-3 bg-secondary rounded-lg border border-border">
+                  <div className="w-6 h-6 rounded-full bg-amber-950/50 text-amber-400 flex items-center justify-center text-sm font-bold flex-shrink-0 border border-amber-800">
                     {idx + 1}
                   </div>
                   <div>
-                    <p className="font-medium text-stone-800">{ex.name}</p>
-                    {ex.details && <p className="text-sm text-stone-500">{ex.details}</p>}
+                    <p className="font-medium text-foreground">{ex.name}</p>
+                    {ex.details && <p className="text-sm text-muted-foreground">{ex.details}</p>}
                   </div>
                 </div>
               ))}
             </div>
           </Collapsible>
         )}
-        
+
         {/* Main Workout */}
         {parsed.mainWorkout && parsed.mainWorkout.exercises.length > 0 && (
-          <Collapsible 
-            title="Main Workout" 
-            icon={<Dumbbell className="text-blue-600" size={18} />}
+          <Collapsible
+            title="Main Workout"
+            icon={<Dumbbell className="text-blue-400" size={18} />}
             badge={parsed.mainWorkout.duration || `${parsed.mainWorkout.exercises.length} exercises`}
             badgeStatus="good"
             defaultOpen={true}
           >
             <div className="pt-4 space-y-3">
               {parsed.mainWorkout.exercises.map((ex, idx) => (
-                <div key={idx} className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                  <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                <div key={idx} className="flex items-start gap-3 p-3 bg-blue-950/30 rounded-lg border border-blue-800">
+                  <div className="w-6 h-6 rounded-full bg-blue-950/50 text-blue-400 flex items-center justify-center text-sm font-bold flex-shrink-0 border border-blue-800">
                     {idx + 1}
                   </div>
                   <div>
-                    <p className="font-medium text-stone-800">{ex.name}</p>
-                    {ex.details && <p className="text-sm text-stone-500">{ex.details}</p>}
+                    <p className="font-medium text-foreground">{ex.name}</p>
+                    {ex.details && <p className="text-sm text-muted-foreground">{ex.details}</p>}
                   </div>
                 </div>
               ))}
             </div>
           </Collapsible>
         )}
-        
+
         {/* Cool-down */}
         {parsed.cooldown && parsed.cooldown.exercises.length > 0 && (
-          <Collapsible 
-            title="Cool-down" 
-            icon={<Zap className="text-teal-500" size={18} />}
+          <Collapsible
+            title="Cool-down"
+            icon={<Zap className="text-teal-400" size={18} />}
             badge={parsed.cooldown.duration || `${parsed.cooldown.exercises.length} exercises`}
             badgeStatus="good"
           >
             <div className="pt-4 space-y-3">
               {parsed.cooldown.exercises.map((ex, idx) => (
-                <div key={idx} className="flex items-start gap-3 p-3 bg-teal-50 rounded-lg">
-                  <div className="w-6 h-6 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                <div key={idx} className="flex items-start gap-3 p-3 bg-teal-950/30 rounded-lg border border-teal-800">
+                  <div className="w-6 h-6 rounded-full bg-teal-950/50 text-teal-400 flex items-center justify-center text-sm font-bold flex-shrink-0 border border-teal-800">
                     {idx + 1}
                   </div>
                   <div>
-                    <p className="font-medium text-stone-800">{ex.name}</p>
-                    {ex.details && <p className="text-sm text-stone-500">{ex.details}</p>}
+                    <p className="font-medium text-foreground">{ex.name}</p>
+                    {ex.details && <p className="text-sm text-muted-foreground">{ex.details}</p>}
                   </div>
                 </div>
               ))}
             </div>
           </Collapsible>
         )}
-        
+
         {/* Context Analysis */}
         {parsed.contextAnalysis?.rawText && (
-          <Collapsible 
-            title="AI Analysis" 
-            icon={<FileText className="text-slate-600" size={18} />}
+          <Collapsible
+            title="AI Analysis"
+            icon={<FileText className="text-slate-400" size={18} />}
             badge="Context"
             badgeStatus="good"
           >
             <div className="pt-4">
-              <p className="text-stone-600 leading-relaxed">{parsed.contextAnalysis.rawText}</p>
+              <p className="text-muted-foreground leading-relaxed">{parsed.contextAnalysis.rawText}</p>
             </div>
           </Collapsible>
         )}
       </div>
-      
+
       {/* Post-Workout Notes */}
       {parsed.postWorkoutNotes && (
-        <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-5">
-          <div className="flex items-center gap-2 text-emerald-700 font-semibold mb-2">
+        <div className="bg-emerald-950/30 border border-emerald-800 rounded-xl p-5">
+          <div className="flex items-center gap-2 text-emerald-400 font-semibold mb-2">
             <Utensils size={18} />
             Post-Workout Nutrition
           </div>
-          <p className="text-emerald-800">{parsed.postWorkoutNotes}</p>
+          <p className="text-emerald-400/80">{parsed.postWorkoutNotes}</p>
         </div>
       )}
-      
+
       {/* Save Confirmation */}
       {saveStatus === 'success' && (
-        <div className="flex items-center gap-2 text-sm text-emerald-600 bg-emerald-50 px-4 py-2 rounded-lg">
+        <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-950/50 px-4 py-2 rounded-lg border border-emerald-800">
           <CheckCircle size={16} />
           <span>Session saved to cloud</span>
         </div>

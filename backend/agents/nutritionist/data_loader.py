@@ -10,38 +10,69 @@ class FoodDataLoader:
 
     def _load_and_merge(self):
         try:
-            # 1. Load CSV (Nutrition Data)
-            if not os.path.exists(self.csv_path):
-                raise FileNotFoundError(f"CSV not found at {self.csv_path}")
-            
-            df_nutrition = pd.read_csv(self.csv_path)
-            # Clean column names (strip spaces)
-            df_nutrition.columns = [c.strip() for c in df_nutrition.columns]
-            
-            # 2. Load JSON (Price & Tags Data)
+            # 1. Load JSON (Meal data with nutrition, ingredients, pricing)
             if not os.path.exists(self.json_path):
                 raise FileNotFoundError(f"JSON not found at {self.json_path}")
                 
             with open(self.json_path, 'r') as f:
                 json_data = json.load(f)
-            df_pricing = pd.DataFrame(json_data)
-
-            # 3. Merge: We use an inner join to keep only items where we have BOTH price and nutrition
-            # 'name' in JSON matches 'Dish Name' in CSV
-            merged_df = pd.merge(
-                df_pricing, 
-                df_nutrition, 
-                left_on='name', 
-                right_on='Dish Name', 
-                how='inner'
-            )
-
-            print(f"✅ Data Loaded Successfully. {len(merged_df)} items available.")
-            return merged_df
+            
+            # Handle new v5.1 format with "meals" array
+            if isinstance(json_data, dict) and 'meals' in json_data:
+                meals = json_data['meals']
+            elif isinstance(json_data, list):
+                meals = json_data
+            else:
+                raise ValueError("Unexpected JSON format")
+            
+            # Flatten meal data for DataFrame
+            flat_data = []
+            for meal in meals:
+                flat_meal = {
+                    'name': meal.get('meal_name', ''),
+                    'meal_type': meal.get('meal_type', 'general'),
+                    'type': meal.get('diet_type', 'veg').capitalize(),  # 'veg' -> 'Veg', 'non-veg' -> 'Non-veg'
+                    'region': meal.get('region', ''),
+                    'price_inr': meal.get('total_cost_inr', 0),
+                    'meal_id': meal.get('meal_id', ''),
+                    'youtube_link': meal.get('youtube_recipe_link', ''),
+                    'recommended_for': meal.get('recommended_for', []),
+                }
+                
+                # Extract nutrition
+                nutrition = meal.get('nutrition', {})
+                flat_meal['calories'] = nutrition.get('cal', 0)
+                flat_meal['protein'] = nutrition.get('protein', 0)
+                flat_meal['carbs'] = nutrition.get('carbs', 0)
+                flat_meal['fats'] = nutrition.get('fat', 0)
+                flat_meal['fiber'] = nutrition.get('fiber', 0)
+                
+                # Extract recipe steps as string
+                flat_meal['recipe'] = ' | '.join(meal.get('recipe', []))
+                
+                # Extract ingredients as string for context
+                ingredients = meal.get('ingredients', [])
+                flat_meal['ingredients_str'] = ', '.join([ing.get('name', '') for ing in ingredients])
+                
+                flat_data.append(flat_meal)
+            
+            df = pd.DataFrame(flat_data)
+            
+            # Normalize diet type to match expected values
+            # "veg" -> "Veg", "non-veg" -> "Non-Veg"
+            df['type'] = df['type'].apply(lambda x: 'Non-Veg' if 'non' in x.lower() else 'Veg')
+            
+            print(f"✅ Data Loaded Successfully. {len(df)} meals available.")
+            print(f"   Diet types: {df['type'].unique()}")
+            print(f"   Price range: ₹{df['price_inr'].min()} - ₹{df['price_inr'].max()}")
+            
+            return df
             
         except Exception as e:
             print(f"❌ Error loading data: {e}")
-            return pd.DataFrame() # Return empty on failure
+            import traceback
+            traceback.print_exc()
+            return pd.DataFrame()  # Return empty on failure
 
     def get_data(self):
         return self.data

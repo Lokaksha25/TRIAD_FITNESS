@@ -18,12 +18,13 @@ class NutritionistAgent:
         self.retriever = retriever
         self.data_loader = data_loader
 
-    def generate_plan(self, user_profile, wellness_data, fitness_coach_plan=None):
+    def generate_plan(self, user_profile, wellness_data, fitness_coach_plan=None, user_id: str = "user_123"):
         
         # 1. Fetch real exercise data from Pinecone (cross-agent memory)
         exercise_memories = get_exercise_memory(
             query=f"workout session for {user_profile.get('goal', 'general fitness')}",
-            top_k=3
+            top_k=3,
+            user_id=user_id
         )
         
         # Format exercise context from Pinecone data
@@ -55,41 +56,103 @@ class NutritionistAgent:
         system_prompt = f"""You are an expert Indian Nutritionist Agent.
 
 **Your Role:**
-Analyze the user's goal, wellness data, and fitness plan to create ONE perfect meal using the 'AVAILABLE_FOODS'.
+Analyze the user's goal, wellness data, and fitness plan to create a COMPLETE DAILY MEAL PLAN using the 'AVAILABLE_FOODS'.
+The plan must include THREE meals: Breakfast, Lunch, and Dinner.
 
 **STRICT DATA USAGE:**
 - Use ONLY items from the provided 'AVAILABLE_FOODS' JSON.
 - DO NOT invent dishes or prices.
-- Combine 1 Main Dish + 1-2 Accompaniments to form a complete meal.
-- Ensure the total cost is within ₹{criteria['budget']}.
+- Each meal should have 1 Main Dish + 1-2 Accompaniments.
+- Budget is PER MEAL, so each meal's totalCost must be within ₹{criteria['budget']}.
 
 **OUTPUT FORMAT:**
 You must output a SINGLE VALID JSON object. Do not include any markdown formatting (like ```json).
 The JSON must have this exact structure:
 
 {{
-  "intro": "Brief explanation of why this meal fits the goal/sleep/workout data...",
-  "mainDish": {{
-    "name": "Exact Name from Data",
-    "price": 150,
-    "description": "Why this main dish is chosen...",
-    "type": "main"
-  }},
-  "accompaniments": [
-    {{
-      "name": "Exact Name from Data",
-      "price": 30,
-      "description": "Why this side...",
-      "type": "accompaniment"
+  "intro": "Brief explanation of why this daily plan fits the goal/sleep/workout data...",
+  "meals": {{
+    "breakfast": {{
+      "mealName": "Energizing Morning Start",
+      "mainDish": {{
+        "name": "Exact Name from Data",
+        "price": 80,
+        "description": "Why this main dish is chosen for breakfast...",
+        "type": "main"
+      }},
+      "accompaniments": [
+        {{
+          "name": "Exact Name from Data",
+          "price": 20,
+          "description": "Why this side...",
+          "type": "accompaniment"
+        }}
+      ],
+      "totalCost": 100,
+      "nutrients": {{
+        "protein": 15,
+        "carbs": 45,
+        "fat": 8,
+        "calories": 320
+      }}
+    }},
+    "lunch": {{
+      "mealName": "Power Lunch",
+      "mainDish": {{
+        "name": "Exact Name from Data",
+        "price": 120,
+        "description": "Why this main dish is chosen for lunch...",
+        "type": "main"
+      }},
+      "accompaniments": [
+        {{
+          "name": "Exact Name from Data",
+          "price": 30,
+          "description": "Why this side...",
+          "type": "accompaniment"
+        }}
+      ],
+      "totalCost": 150,
+      "nutrients": {{
+        "protein": 30,
+        "carbs": 60,
+        "fat": 15,
+        "calories": 500
+      }}
+    }},
+    "dinner": {{
+      "mealName": "Recovery Dinner",
+      "mainDish": {{
+        "name": "Exact Name from Data",
+        "price": 100,
+        "description": "Why this main dish is chosen for dinner...",
+        "type": "main"
+      }},
+      "accompaniments": [
+        {{
+          "name": "Exact Name from Data",
+          "price": 25,
+          "description": "Why this side...",
+          "type": "accompaniment"
+        }}
+      ],
+      "totalCost": 125,
+      "nutrients": {{
+        "protein": 25,
+        "carbs": 40,
+        "fat": 12,
+        "calories": 380
+      }}
     }}
-  ],
-  "totalCost": 180,
-  "nutrients": {{
-    "protein": {{ "total": 25.5, "breakdown": "Paneer (18g), Roti (7.5g)" }},
-    "calcium": {{ "total": 400, "breakdown": "Paneer (350mg), Roti (50mg)" }},
-    "iron": {{ "total": 4.2, "breakdown": "Spinach (3.0mg), Roti (1.2mg)" }}
   }},
-  "whyItWorks": "Conclusion summarizing the benefits..."
+  "totalMacros": {{
+    "protein": 70,
+    "carbs": 145,
+    "fat": 35,
+    "calories": 1200
+  }},
+  "totalDailyCost": 375,
+  "whyItWorks": "Conclusion summarizing how the full day plan supports the user's goals..."
 }}
 """
 
@@ -131,7 +194,8 @@ The JSON must have this exact structure:
                         "goal": user_profile.get('goal', ''),
                         "diet_type": user_profile.get('diet_type', ''),
                         "budget": user_profile.get('budget', 0)
-                    }
+                    },
+                    user_id=user_id
                 )
                 print(f"✅ Saved nutrition plan to Pinecone: {log_id}")
             except Exception as save_err:

@@ -4,8 +4,10 @@ import { AgentType, ChatMessage } from '../types';
 import { MOCK_MANAGER_DECISION } from '../constants';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useAuth } from '../context/AuthContext';
 
 const ChatView: React.FC = () => {
+    const { currentUser } = useAuth();
     const [messages, setMessages] = useState<ChatMessage[]>([
         {
             id: 'init',
@@ -50,7 +52,10 @@ const ChatView: React.FC = () => {
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: userText })
+                body: JSON.stringify({
+                    message: userText,
+                    user_id: currentUser?.uid || "user_123" // Fallback only if auth fails unexpectedly
+                })
             });
 
             if (!response.ok) throw new Error("API Call Failed");
@@ -122,20 +127,20 @@ const ChatView: React.FC = () => {
 
     const getAgentIcon = (type: AgentType) => {
         switch (type) {
-            case AgentType.TRAINER: return <Dumbbell size={20} className="text-slate-600" />;
-            case AgentType.NUTRITIONIST: return <Utensils size={20} className="text-emerald-600" />;
-            case AgentType.WELLNESS: return <Sun size={20} className="text-amber-600" />;
-            case AgentType.MANAGER: return <ShieldCheck size={24} className="text-stone-100" />;
+            case AgentType.TRAINER: return <Dumbbell size={20} className="text-slate-400" />;
+            case AgentType.NUTRITIONIST: return <Utensils size={20} className="text-emerald-400" />;
+            case AgentType.WELLNESS: return <Sun size={20} className="text-amber-400" />;
+            case AgentType.MANAGER: return <ShieldCheck size={24} className="text-zinc-100" />;
             default: return <Bot size={20} />;
         }
     };
 
     const getAgentStyles = (type: AgentType) => {
         switch (type) {
-            case AgentType.TRAINER: return 'border-slate-200 bg-slate-50';
-            case AgentType.NUTRITIONIST: return 'border-emerald-200 bg-emerald-50';
-            case AgentType.WELLNESS: return 'border-amber-200 bg-amber-50';
-            default: return 'border-gray-200 bg-white';
+            case AgentType.TRAINER: return 'border-slate-700 bg-slate-900/50';
+            case AgentType.NUTRITIONIST: return 'border-emerald-800 bg-emerald-950/50';
+            case AgentType.WELLNESS: return 'border-amber-800 bg-amber-950/50';
+            default: return 'border-border bg-card';
         }
     };
 
@@ -148,8 +153,8 @@ const ChatView: React.FC = () => {
     return (
         <div className="flex flex-col h-[calc(100vh-6rem)] max-w-4xl mx-auto">
             {/* Header */}
-            <div className="mb-4 text-center border-b border-stone-100 pb-2">
-                <h2 className="text-lg font-bold text-stone-800">Consultation Room</h2>
+            <div className="mb-4 text-center border-b border-border pb-2">
+                <h2 className="text-lg font-bold text-foreground">Consultation Room</h2>
             </div>
 
             {/* Messages Feed */}
@@ -161,11 +166,11 @@ const ChatView: React.FC = () => {
                         {msg.sender === 'user' && (
                             <div className="flex justify-end mb-2">
                                 <div className="flex items-start space-x-3 max-w-[85%] flex-row-reverse space-x-reverse">
-                                    <div className="w-8 h-8 rounded-full bg-stone-800 flex items-center justify-center shrink-0 shadow-sm">
-                                        <User size={16} className="text-white" />
+                                    <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center shrink-0 shadow-sm border border-border">
+                                        <User size={16} className="text-foreground" />
                                     </div>
-                                    <div className="bg-white border border-stone-200 rounded-2xl rounded-tr-none px-5 py-3 shadow-sm">
-                                        <p className="text-stone-800 leading-relaxed text-sm md:text-base">{msg.text}</p>
+                                    <div className="bg-card border border-border rounded-2xl rounded-tr-none px-5 py-3 shadow-sm">
+                                        <p className="text-foreground leading-relaxed text-sm md:text-base">{msg.text}</p>
                                     </div>
                                 </div>
                             </div>
@@ -176,20 +181,20 @@ const ChatView: React.FC = () => {
                             <div className="flex justify-start my-4 max-w-[90%]">
                                 {msg.id === 'init' ? (
                                     <div className="flex items-start space-x-3">
-                                        <div className="w-8 h-8 rounded-full bg-stone-100 border border-stone-200 flex items-center justify-center shrink-0">
-                                            <Bot size={18} className="text-stone-500" />
+                                        <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center shrink-0">
+                                            <Bot size={18} className="text-muted-foreground" />
                                         </div>
-                                        <div className="bg-stone-100 text-stone-600 text-sm px-5 py-3 rounded-2xl rounded-tl-none border border-stone-200 shadow-sm">
+                                        <div className="bg-card text-muted-foreground text-sm px-5 py-3 rounded-2xl rounded-tl-none border border-border shadow-sm">
                                             {msg.text}
                                         </div>
                                     </div>
                                 ) : (
                                     // Fallback for any non-init system messages
                                     <div className="flex items-center space-x-3">
-                                        <div className="w-8 h-8 rounded-full bg-stone-50 border border-stone-100 flex items-center justify-center shrink-0">
-                                            <Sparkles size={16} className="text-stone-400" />
+                                        <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center shrink-0">
+                                            <Sparkles size={16} className="text-muted-foreground" />
                                         </div>
-                                        <span className="text-stone-500 text-sm">{msg.text}</span>
+                                        <span className="text-muted-foreground text-sm">{msg.text}</span>
                                     </div>
                                 )}
                             </div>
@@ -202,19 +207,19 @@ const ChatView: React.FC = () => {
                                     <div key={idx} className={`rounded-xl border p-4 shadow-sm flex flex-col md:flex-row gap-4 items-start ${getAgentStyles(agent.agentType)}`}>
                                         {/* Avatar / Icon Left */}
                                         <div className="shrink-0">
-                                            <div className="w-10 h-10 rounded-full bg-white border border-stone-100 flex items-center justify-center shadow-sm">
+                                            <div className="w-10 h-10 rounded-full bg-secondary border border-border flex items-center justify-center shadow-sm">
                                                 {getAgentIcon(agent.agentType)}
                                             </div>
                                         </div>
 
                                         {/* Content Right */}
                                         <div className="flex-1">
-                                            <h4 className="font-bold text-sm text-stone-900 mb-1">{agent.agentType}</h4>
-                                            <div className="text-sm text-stone-600 leading-relaxed mb-3 prose prose-stone prose-sm max-w-none">
+                                            <h4 className="font-bold text-sm text-foreground mb-1">{agent.agentType}</h4>
+                                            <div className="text-sm text-muted-foreground leading-relaxed mb-3 prose prose-invert prose-sm max-w-none">
                                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{agent.content}</ReactMarkdown>
                                             </div>
-                                            <div className="pt-2 border-t border-black/5">
-                                                <p className="text-xs font-bold text-stone-900">
+                                            <div className="pt-2 border-t border-border">
+                                                <p className="text-xs font-bold text-foreground">
                                                     {agent.summary}
                                                 </p>
                                             </div>
@@ -228,21 +233,21 @@ const ChatView: React.FC = () => {
                         {msg.sender === 'manager' && (
                             <div className="flex flex-col mt-3 max-w-[90%] md:max-w-[75%]">
                                 {/* Manager Card - Darker, Neutral */}
-                                <div className="bg-stone-900 rounded-xl p-5 shadow-md text-stone-100 flex flex-col md:flex-row gap-4 items-start border border-stone-700">
+                                <div className="bg-card rounded-xl p-5 shadow-md text-foreground flex flex-col md:flex-row gap-4 items-start border border-violet-800">
                                     {/* Avatar / Icon Left */}
                                     <div className="shrink-0">
-                                        <div className="w-10 h-10 rounded-full bg-stone-800 border border-stone-600 flex items-center justify-center shadow-sm">
-                                            <ShieldCheck size={20} className="text-white" />
+                                        <div className="w-10 h-10 rounded-full bg-violet-950 border border-violet-700 flex items-center justify-center shadow-sm">
+                                            <ShieldCheck size={20} className="text-violet-300" />
                                         </div>
                                     </div>
 
                                     {/* Content */}
                                     <div className="flex-1">
-                                        <h3 className="font-bold text-base mb-1 text-white">Manager Agent <span className="text-stone-400 font-normal text-sm">- Final Decision</span></h3>
-                                        <div className="text-stone-300 text-sm leading-relaxed mb-3 prose prose-invert prose-sm max-w-none">
+                                        <h3 className="font-bold text-base mb-1 text-foreground">Manager Agent <span className="text-muted-foreground font-normal text-sm">- Final Decision</span></h3>
+                                        <div className="text-muted-foreground text-sm leading-relaxed mb-3 prose prose-invert prose-sm max-w-none">
                                             <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
                                         </div>
-                                        <div className="inline-flex items-center space-x-2 bg-stone-800 px-2 py-1 rounded text-[10px] font-mono text-emerald-400 border border-stone-700">
+                                        <div className="inline-flex items-center space-x-2 bg-secondary px-2 py-1 rounded text-[10px] font-mono text-emerald-400 border border-border">
                                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                                             <span>PROTOCOL_RESOLVED</span>
                                         </div>
@@ -258,10 +263,10 @@ const ChatView: React.FC = () => {
                 {loadingStep === 'analyzing' && (
                     <div className="flex justify-start my-4 max-w-[85%] animate-in fade-in slide-in-from-bottom-2">
                         <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 rounded-full bg-stone-50 border border-stone-100 flex items-center justify-center shrink-0 shadow-sm">
-                                <Loader2 size={16} className="text-stone-400 animate-spin" />
+                            <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center shrink-0 shadow-sm">
+                                <Loader2 size={16} className="text-muted-foreground animate-spin" />
                             </div>
-                            <span className="text-stone-500 text-xs uppercase tracking-widest font-semibold bg-stone-50 px-3 py-1.5 rounded-full border border-stone-100 shadow-sm">
+                            <span className="text-muted-foreground text-xs uppercase tracking-widest font-semibold bg-card px-3 py-1.5 rounded-full border border-border shadow-sm">
                                 Consulting Physical Trainer, Nutritionist, and Wellness Coach...
                             </span>
                         </div>
@@ -271,10 +276,10 @@ const ChatView: React.FC = () => {
                 {loadingStep === 'reviewing' && (
                     <div className="flex justify-start my-4 max-w-[85%] animate-in fade-in slide-in-from-bottom-2">
                         <div className="flex items-center space-x-3 ml-1">
-                            <div className="h-1 w-1 bg-stone-300 rounded-full animate-bounce delay-0"></div>
-                            <div className="h-1 w-1 bg-stone-300 rounded-full animate-bounce delay-150"></div>
-                            <div className="h-1 w-1 bg-stone-300 rounded-full animate-bounce delay-300"></div>
-                            <span className="text-stone-400 text-xs font-medium ml-2">Manager Reviewing...</span>
+                            <div className="h-1 w-1 bg-muted-foreground rounded-full animate-bounce delay-0"></div>
+                            <div className="h-1 w-1 bg-muted-foreground rounded-full animate-bounce delay-150"></div>
+                            <div className="h-1 w-1 bg-muted-foreground rounded-full animate-bounce delay-300"></div>
+                            <span className="text-muted-foreground text-xs font-medium ml-2">Manager Reviewing...</span>
                         </div>
                     </div>
                 )}
@@ -283,7 +288,7 @@ const ChatView: React.FC = () => {
             </div>
 
             {/* Input Area */}
-            <div className="mt-2 px-4 pb-6 pt-2 bg-stone-50">
+            <div className="mt-2 px-4 pb-6 pt-2 bg-background">
                 <form onSubmit={handleSend} className="relative max-w-4xl mx-auto">
                     <input
                         type="text"
@@ -291,12 +296,12 @@ const ChatView: React.FC = () => {
                         onChange={(e) => setInputText(e.target.value)}
                         disabled={isProcessing}
                         placeholder={isProcessing ? "Analysis in progress..." : "Type your update (e.g., 'Knee feels unstable')"}
-                        className="w-full bg-white border border-stone-300 text-stone-900 rounded-2xl py-4 pl-5 pr-14 focus:outline-none focus:ring-2 focus:ring-stone-400 focus:border-stone-400 shadow-sm placeholder:text-stone-400 transition-all text-base"
+                        className="w-full bg-card border border-border text-foreground rounded-2xl py-4 pl-5 pr-14 focus:outline-none focus:ring-2 focus:ring-border focus:border-border shadow-sm placeholder:text-muted-foreground transition-all text-base"
                     />
                     <button
                         type="submit"
                         disabled={!inputText.trim() || isProcessing}
-                        className="absolute right-2 top-2 p-2.5 bg-stone-800 text-white rounded-xl hover:bg-stone-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="absolute right-2 top-2 p-2.5 bg-secondary text-foreground rounded-xl hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors border border-border"
                     >
                         <Send size={18} />
                     </button>

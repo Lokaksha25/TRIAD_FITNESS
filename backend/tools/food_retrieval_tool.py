@@ -8,7 +8,7 @@ from nutrition.retrieval import DietRetriever
 # backend/tools/food_retrieval_tool.py -> ... -> backend/
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSV_PATH = os.path.join(BASE_DIR, "data", "Indian_Food_Nutrition_Processed.csv")
-JSON_PATH = os.path.join(BASE_DIR, "data", "indian_food_rag_dataset_delivery_pricing.json")
+JSON_PATH = os.path.join(BASE_DIR, "data", "indian_gym_friendly_nutrition_rag_dataset_TOP_NOTCH_v5.1.json")
 
 # Initialize globally to load once
 # This will run when the module is imported

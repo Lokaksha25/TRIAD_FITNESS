@@ -23,7 +23,11 @@ calendar_tool = UserCalendarTool()
 save_tool = SaveWorkoutTool()
 
 class PhysicalTrainerAgent:
-    def create(self):
+    def create(self, user_id: str = "user_123"):
+        # Configure tools with user_id
+        save_tool.user_id = user_id
+        rag_tool.user_id = user_id
+        
         return Agent(
             role='Senior Personal Trainer & Biomechanics Strategist',
             goal=(

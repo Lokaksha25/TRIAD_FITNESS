@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Target, TrendingDown, Play, CheckCircle, AlertTriangle, Utensils, IndianRupee, Activity, Bed, HeartPulse, Leaf, Drumstick, Flame, Dumbbell, Sparkles } from 'lucide-react';
+import { Target, TrendingDown, Play, CheckCircle, AlertTriangle, Utensils, IndianRupee, Activity, Bed, HeartPulse, Leaf, Drumstick, Flame, Dumbbell, Sparkles, ChevronDown, ChevronUp, Settings, Sun, Coffee, Moon } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { useAuth } from '../context/AuthContext';
+import CustomSelect from './ui/CustomSelect';
 
 // Types for parsed meal data
 interface MealItem {
@@ -10,45 +12,77 @@ interface MealItem {
   type: 'main' | 'accompaniment';
 }
 
-interface ParsedMealPlan {
-  intro: string;
+interface SingleMeal {
+  mealName: string;
   mainDish: MealItem | null;
   accompaniments: MealItem[];
   totalCost: number;
   nutrients: {
-    protein: { total: number; breakdown: string };
-    calcium: { total: number; breakdown: string };
-    iron: { total: number; breakdown: string };
+    protein: number;
+    carbs: number;
+    fat: number;
+    calories: number;
   };
+}
+
+interface ParsedMealPlan {
+  intro: string;
+  meals: {
+    breakfast: SingleMeal | null;
+    lunch: SingleMeal | null;
+    dinner: SingleMeal | null;
+  };
+  totalMacros: {
+    protein: number;
+    carbs: number;
+    fat: number;
+    calories: number;
+  };
+  totalDailyCost: number;
   whyItWorks: string;
 }
 
 // Parser function to extract structured data from meal plan text
 const parseMealPlan = (text: string): ParsedMealPlan | null => {
   try {
-    // 1. Try Direct JSON parsing
     // Cleanup any markdown code blocks if present
     const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
     const data = JSON.parse(cleanText);
 
+    const parseMeal = (meal: any): SingleMeal | null => {
+      if (!meal) return null;
+      return {
+        mealName: meal.mealName || "Meal",
+        mainDish: meal.mainDish || null,
+        accompaniments: meal.accompaniments || [],
+        totalCost: meal.totalCost || 0,
+        nutrients: {
+          protein: meal.nutrients?.protein || 0,
+          carbs: meal.nutrients?.carbs || 0,
+          fat: meal.nutrients?.fat || 0,
+          calories: meal.nutrients?.calories || 0
+        }
+      };
+    };
+
     return {
-      intro: data.intro || "Here is your personalized meal plan.",
-      mainDish: data.mainDish,
-      accompaniments: data.accompaniments || [],
-      totalCost: data.totalCost || 0,
-      nutrients: data.nutrients || {
-        protein: { total: 0, breakdown: "N/A" },
-        calcium: { total: 0, breakdown: "N/A" },
-        iron: { total: 0, breakdown: "N/A" }
+      intro: data.intro || "Here is your personalized daily meal plan.",
+      meals: {
+        breakfast: parseMeal(data.meals?.breakfast),
+        lunch: parseMeal(data.meals?.lunch),
+        dinner: parseMeal(data.meals?.dinner)
       },
-      whyItWorks: data.whyItWorks || "Balanced choice."
+      totalMacros: {
+        protein: data.totalMacros?.protein || 0,
+        carbs: data.totalMacros?.carbs || 0,
+        fat: data.totalMacros?.fat || 0,
+        calories: data.totalMacros?.calories || 0
+      },
+      totalDailyCost: data.totalDailyCost || 0,
+      whyItWorks: data.whyItWorks || "Balanced daily nutrition."
     };
   } catch (e) {
     console.log("JSON parse failed, trying fallback regex:", e);
-
-    // Fallback: Return null to show raw text if it's not JSON
-    // Or we could implement the old regex here as a last resort,
-    // but if the backend is strictly JSON now, we prefer to fail or show raw.
     return null;
   }
 };
@@ -60,15 +94,15 @@ const MealCard: React.FC<{ item: MealItem; isMain?: boolean; dietType: string }>
   return (
     <div className={`relative overflow-hidden rounded-2xl border ${isMain ? 'col-span-full' : ''} 
       ${isVeg
-        ? 'bg-gradient-to-br from-emerald-50 via-green-50 to-lime-50 border-emerald-200'
-        : 'bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 border-orange-200'
-      } p-5 transition-all duration-300 hover:shadow-lg hover:scale-[1.02]`}
+        ? 'bg-emerald-950/30 border-emerald-800'
+        : 'bg-orange-950/30 border-orange-800'
+      } p-5 transition-all duration-300 hover:border-opacity-80`}
     >
       {/* Type Badge */}
       <div className={`absolute top-3 right-3 px-2 py-1 rounded-full text-xs font-bold 
         ${isMain
           ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white'
-          : 'bg-white/80 text-stone-600 border border-stone-200'
+          : 'bg-secondary text-muted-foreground border border-border'
         }`}
       >
         {isMain ? '⭐ Main Dish' : '🥗 Side'}
@@ -76,18 +110,18 @@ const MealCard: React.FC<{ item: MealItem; isMain?: boolean; dietType: string }>
 
       {/* Icon */}
       <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3
-        ${isVeg ? 'bg-emerald-100' : 'bg-orange-100'}`}
+        ${isVeg ? 'bg-emerald-900/50' : 'bg-orange-900/50'}`}
       >
         {isVeg ? (
-          <Leaf className={`${isVeg ? 'text-emerald-600' : 'text-orange-600'}`} size={24} />
+          <Leaf className={`${isVeg ? 'text-emerald-400' : 'text-orange-400'}`} size={24} />
         ) : (
-          <Drumstick className="text-orange-600" size={24} />
+          <Drumstick className="text-orange-400" size={24} />
         )}
       </div>
 
       {/* Name & Price */}
       <div className="flex items-start justify-between gap-3 mb-2">
-        <h4 className={`font-bold ${isMain ? 'text-xl' : 'text-lg'} text-stone-800`}>
+        <h4 className={`font-bold ${isMain ? 'text-xl' : 'text-lg'} text-foreground`}>
           {item.name}
         </h4>
         <div className={`flex items-center gap-1 px-3 py-1 rounded-full font-bold text-sm whitespace-nowrap
@@ -102,35 +136,141 @@ const MealCard: React.FC<{ item: MealItem; isMain?: boolean; dietType: string }>
       </div>
 
       {/* Description */}
-      <p className="text-stone-600 text-sm leading-relaxed">
+      <p className="text-muted-foreground text-sm leading-relaxed">
         {item.description}
       </p>
     </div>
   );
 };
 
-// Nutrient Pill Component
-const NutrientPill: React.FC<{ label: string; value: number; unit: string; breakdown: string; color: string; icon: React.ReactNode }> =
+// Nutrient Pill Component (simplified for totals)
+const NutrientPill: React.FC<{ label: string; value: number; unit: string; breakdown?: string; color: string; icon: React.ReactNode }> =
   ({ label, value, unit, breakdown, color, icon }) => (
-    <div className={`group relative bg-white rounded-xl border border-stone-200 p-4 hover:shadow-md transition-all`}>
+    <div className={`group relative bg-card rounded-xl border border-border p-4 hover:border-muted transition-all`}>
       <div className="flex items-center gap-3">
         <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${color}`}>
           {icon}
         </div>
         <div>
-          <p className="text-xs text-stone-500 font-medium">{label}</p>
-          <p className="text-lg font-bold text-stone-800">{value.toFixed(1)}{unit}</p>
+          <p className="text-xs text-muted-foreground font-medium">{label}</p>
+          <p className="text-lg font-bold text-foreground">{Math.round(value)}{unit}</p>
         </div>
       </div>
       {breakdown && (
-        <p className="text-xs text-stone-400 mt-2 line-clamp-2" title={breakdown}>
+        <p className="text-xs text-muted-foreground mt-2 line-clamp-2" title={breakdown}>
           {breakdown}
         </p>
       )}
     </div>
   );
 
+// Collapsible Meal Section Component
+const CollapsibleMealSection: React.FC<{
+  meal: SingleMeal;
+  mealType: 'breakfast' | 'lunch' | 'dinner';
+  dietType: string;
+  budget: number;
+  defaultOpen?: boolean;
+}> = ({ meal, mealType, dietType, budget, defaultOpen = false }) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  const mealConfig = {
+    breakfast: { icon: Coffee, label: 'Breakfast', gradient: 'from-amber-500/20 to-orange-500/20', border: 'border-amber-700', iconColor: 'text-amber-400', bg: 'bg-amber-950/30' },
+    lunch: { icon: Sun, label: 'Lunch', gradient: 'from-blue-500/20 to-cyan-500/20', border: 'border-blue-700', iconColor: 'text-blue-400', bg: 'bg-blue-950/30' },
+    dinner: { icon: Moon, label: 'Dinner', gradient: 'from-purple-500/20 to-pink-500/20', border: 'border-purple-700', iconColor: 'text-purple-400', bg: 'bg-purple-950/30' }
+  };
+
+  const config = mealConfig[mealType];
+  const Icon = config.icon;
+  const isVeg = dietType === 'Vegetarian';
+
+  return (
+    <div className={`rounded-xl border ${config.border} overflow-hidden`}>
+      {/* Header - clickable */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full p-4 flex items-center justify-between ${config.bg} hover:opacity-90 transition-all`}
+      >
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-lg bg-gradient-to-br ${config.gradient}`}>
+            <Icon className={config.iconColor} size={20} />
+          </div>
+          <div className="text-left">
+            <h4 className="text-foreground font-bold">{config.label}</h4>
+            <p className="text-xs text-muted-foreground">{meal.mealName}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold ${meal.totalCost <= budget ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
+            <IndianRupee size={14} />
+            {meal.totalCost}
+          </div>
+          {isOpen ? <ChevronUp size={18} className="text-muted-foreground" /> : <ChevronDown size={18} className="text-muted-foreground" />}
+        </div>
+      </button>
+
+      {/* Expandable content */}
+      {isOpen && (
+        <div className="p-4 border-t border-border/50 bg-card space-y-4 animate-in slide-in-from-top-2 duration-200">
+          {/* Main Dish */}
+          {meal.mainDish && (
+            <div className={`p-4 rounded-lg border ${isVeg ? 'bg-emerald-950/20 border-emerald-800' : 'bg-orange-950/20 border-orange-800'}`}>
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded text-xs font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white">⭐ Main</span>
+                  <h5 className="font-bold text-foreground">{meal.mainDish.name}</h5>
+                </div>
+                <span className="text-sm font-bold text-emerald-400">₹{meal.mainDish.price}</span>
+              </div>
+              <p className="text-sm text-muted-foreground">{meal.mainDish.description}</p>
+            </div>
+          )}
+
+          {/* Accompaniments */}
+          {meal.accompaniments.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {meal.accompaniments.map((acc, idx) => (
+                <div key={idx} className={`p-3 rounded-lg border ${isVeg ? 'bg-emerald-950/10 border-emerald-900' : 'bg-orange-950/10 border-orange-900'}`}>
+                  <div className="flex items-start justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-secondary text-muted-foreground border border-border">🥗 Side</span>
+                      <h5 className="font-medium text-foreground text-sm">{acc.name}</h5>
+                    </div>
+                    <span className="text-xs font-bold text-emerald-400">₹{acc.price}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{acc.description}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Meal Nutrients */}
+          <div className="grid grid-cols-4 gap-2 pt-2 border-t border-border/50">
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground">Protein</p>
+              <p className="font-bold text-emerald-400">{meal.nutrients.protein}g</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground">Carbs</p>
+              <p className="font-bold text-blue-400">{meal.nutrients.carbs}g</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground">Fat</p>
+              <p className="font-bold text-amber-400">{meal.nutrients.fat}g</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground">Calories</p>
+              <p className="font-bold text-foreground">{meal.nutrients.calories}</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const NutritionistView: React.FC = () => {
+  const { currentUser } = useAuth();
   // Mode State
   const [mode, setMode] = useState<'planner' | 'scanner'>('planner');
 
@@ -154,6 +294,7 @@ const NutritionistView: React.FC = () => {
   // Common State
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSignals, setShowSignals] = useState<boolean>(false);
 
   const startNutritionSession = async () => {
     setLoading(true);
@@ -175,7 +316,8 @@ const NutritionistView: React.FC = () => {
           diet_type: dietType,
           budget: budget,
           wellness_data: wellnessData,
-          fitness_coach_plan: fitnessCoachPlan
+          fitness_coach_plan: fitnessCoachPlan,
+          user_id: currentUser?.uid || "user_123"
         }),
       });
 
@@ -238,21 +380,21 @@ const NutritionistView: React.FC = () => {
   const parsedPlan = mealResult ? parseMealPlan(mealResult) : null;
 
   return (
-    <div className="grid grid-cols-1 lg:col-span-3 gap-6 h-full pb-12">
-      {/* Left Column: Input Configuration */}
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full pb-12">
+      {/* Left Column: User Profile */}
       <div className="lg:col-span-1 space-y-6">
 
         {/* Mode Toggle */}
-        <div className="bg-stone-100 p-1 rounded-xl flex">
+        <div className="bg-secondary p-1 rounded-xl flex border border-border">
           <button
             onClick={() => setMode('planner')}
-            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${mode === 'planner' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${mode === 'planner' ? 'bg-card text-foreground shadow-sm border border-border' : 'text-muted-foreground hover:text-foreground'}`}
           >
             Meal Planner
           </button>
           <button
             onClick={() => setMode('scanner')}
-            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${mode === 'scanner' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${mode === 'scanner' ? 'bg-card text-foreground shadow-sm border border-border' : 'text-muted-foreground hover:text-foreground'}`}
           >
             NutriScan
           </button>
@@ -260,43 +402,43 @@ const NutritionistView: React.FC = () => {
 
         {mode === 'planner' ? (
           <>
-            <div className="bg-white border border-stone-200 rounded-xl p-6 shadow-sm">
+            <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
               <div className="flex items-center gap-2 mb-6">
-                <Utensils className="text-stone-400" size={20} />
-                <h3 className="text-stone-500 text-xs font-bold uppercase tracking-wider">User Profile</h3>
+                <Utensils className="text-muted-foreground" size={20} />
+                <h3 className="text-muted-foreground text-xs font-bold uppercase tracking-wider">User Profile</h3>
               </div>
 
               <div className="space-y-6">
                 {/* Goal Selection */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-stone-700">Fitness Goal</label>
-                  <select
+                  <label className="text-sm font-medium text-foreground">Fitness Goal</label>
+                  <CustomSelect
                     value={goal}
-                    onChange={(e) => setGoal(e.target.value)}
+                    onChange={setGoal}
                     disabled={loading}
-                    className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                  >
-                    <option value="Muscle Gain">Muscle Gain (Hypertrophy)</option>
-                    <option value="Weight Loss">Weight Loss (Fat Burn)</option>
-                    <option value="General Health">General Health & Wellness</option>
-                  </select>
+                    options={[
+                      { value: 'Muscle Gain', label: 'Muscle Gain (Hypertrophy)' },
+                      { value: 'Weight Loss', label: 'Weight Loss (Fat Burn)' },
+                      { value: 'General Health', label: 'General Health & Wellness' }
+                    ]}
+                  />
                 </div>
 
                 {/* Diet Type */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-stone-700">Diet Preference</label>
+                  <label className="text-sm font-medium text-foreground">Diet Preference</label>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() => setDietType('Vegetarian')}
                       disabled={loading}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium border ${dietType === 'Vegetarian' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-stone-200 text-stone-600 hover:bg-stone-50'}`}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium border ${dietType === 'Vegetarian' ? 'bg-emerald-950/50 border-emerald-700 text-emerald-400' : 'bg-secondary border-border text-muted-foreground hover:text-foreground'}`}
                     >
                       Vegetarian
                     </button>
                     <button
                       onClick={() => setDietType('Non-Vegetarian')}
                       disabled={loading}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium border ${dietType === 'Non-Vegetarian' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-white border-stone-200 text-stone-600 hover:bg-stone-50'}`}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium border ${dietType === 'Non-Vegetarian' ? 'bg-red-950/50 border-red-700 text-red-400' : 'bg-secondary border-border text-muted-foreground hover:text-foreground'}`}
                     >
                       Non-Veg
                     </button>
@@ -306,8 +448,8 @@ const NutritionistView: React.FC = () => {
                 {/* Budget */}
                 <div className="space-y-2">
                   <div className="flex justify-between">
-                    <label className="text-sm font-medium text-stone-700">Budget (per meal)</label>
-                    <span className="text-sm font-bold text-stone-900">₹{budget}</span>
+                    <label className="text-sm font-medium text-foreground">Budget (per meal)</label>
+                    <span className="text-sm font-bold text-foreground">₹{budget}</span>
                   </div>
                   <input
                     type="range"
@@ -317,9 +459,9 @@ const NutritionistView: React.FC = () => {
                     value={budget}
                     onChange={(e) => setBudget(parseInt(e.target.value))}
                     disabled={loading}
-                    className="w-full h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                    className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-emerald-500"
                   />
-                  <div className="flex justify-between text-xs text-stone-400">
+                  <div className="flex justify-between text-xs text-muted-foreground">
                     <span>₹100</span>
                     <span>₹2000</span>
                   </div>
@@ -327,68 +469,92 @@ const NutritionistView: React.FC = () => {
               </div>
             </div>
 
-            {/* Incoming Signals (Wellness & Fitness Coach) */}
-            <div className="bg-white border border-stone-200 rounded-xl p-6 shadow-sm">
-              <div className="flex items-center gap-2 mb-6">
-                <Activity className="text-stone-400" size={20} />
-                <h3 className="text-stone-500 text-xs font-bold uppercase tracking-wider">Incoming Signals</h3>
-              </div>
-              <div className="space-y-4">
-                {/* Wellness Data */}
-                <h4 className="text-stone-600 text-sm font-medium flex items-center gap-2"><HeartPulse size={16} /> Wellness Manager</h4>
-                <div className="space-y-2 pl-2 border-l border-stone-100">
-                  <label className="text-xs font-medium text-stone-500 block">Sleep Score (Last Night)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={sleepScore}
-                    onChange={(e) => setSleepScore(parseInt(e.target.value))}
-                    disabled={loading}
-                    className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-stone-400 outline-none"
-                  />
-                  <label className="text-xs font-medium text-stone-500 block mt-2">Stress Level</label>
-                  <select
-                    value={stressLevel}
-                    onChange={(e) => setStressLevel(e.target.value)}
-                    disabled={loading}
-                    className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-stone-400 outline-none"
-                  >
-                    <option value="Low">Low</option>
-                    <option value="Moderate">Moderate</option>
-                    <option value="High">High</option>
-                  </select>
-                  <label className="text-xs font-medium text-stone-500 block mt-2">Active Calories Burned</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={caloriesBurned}
-                    onChange={(e) => setCaloriesBurned(parseInt(e.target.value))}
-                    disabled={loading}
-                    className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-stone-400 outline-none"
-                  />
+            {/* Incoming Signals Toggle Button */}
+            <button
+              onClick={() => setShowSignals(!showSignals)}
+              className="w-full bg-card border border-border rounded-xl p-4 shadow-sm flex items-center justify-between hover:border-muted transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-secondary rounded-lg border border-border">
+                  <Settings className="text-muted-foreground" size={18} />
                 </div>
+                <div className="text-left">
+                  <h3 className="text-foreground text-sm font-medium">Incoming Signals</h3>
+                  <p className="text-xs text-muted-foreground">Wellness & Fitness Coach data</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs px-2 py-1 rounded-full font-medium ${showSignals ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-800' : 'bg-secondary text-muted-foreground border border-border'}`}>
+                  {showSignals ? 'Enabled' : 'Disabled'}
+                </span>
+                {showSignals ? <ChevronUp size={18} className="text-muted-foreground" /> : <ChevronDown size={18} className="text-muted-foreground" />}
+              </div>
+            </button>
 
-                {/* Fitness Coach Plan */}
-                <h4 className="text-stone-600 text-sm font-medium mt-4 flex items-center gap-2"><Activity size={16} /> Fitness Coach</h4>
-                <div className="space-y-2 pl-2 border-l border-stone-100">
-                  <label className="text-xs font-medium text-stone-500 block">Incoming Signal (Workout Context)</label>
-                  <textarea
-                    value={fitnessCoachPlan}
-                    onChange={(e) => setFitnessCoachPlan(e.target.value)}
-                    disabled={loading}
-                    rows={4}
-                    className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-stone-400 outline-none resize-none"
-                  ></textarea>
+            {/* Incoming Signals (Wellness & Fitness Coach) - Collapsible */}
+            {showSignals && (
+              <div className="bg-card border border-border rounded-xl p-6 shadow-sm animate-in slide-in-from-top-2 duration-200">
+                <div className="flex items-center gap-2 mb-6">
+                  <Activity className="text-muted-foreground" size={20} />
+                  <h3 className="text-muted-foreground text-xs font-bold uppercase tracking-wider">Incoming Signals</h3>
+                </div>
+                <div className="space-y-4">
+                  {/* Wellness Data */}
+                  <h4 className="text-foreground text-sm font-medium flex items-center gap-2"><HeartPulse size={16} /> Wellness Manager</h4>
+                  <div className="space-y-2 pl-2 border-l border-border">
+                    <label className="text-xs font-medium text-muted-foreground block">Sleep Score (Last Night)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={sleepScore}
+                      onChange={(e) => setSleepScore(parseInt(e.target.value))}
+                      disabled={loading}
+                      className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:ring-2 focus:ring-border outline-none"
+                    />
+                    <label className="text-xs font-medium text-muted-foreground block mt-2">Stress Level</label>
+                    <CustomSelect
+                      value={stressLevel}
+                      onChange={setStressLevel}
+                      disabled={loading}
+                      options={[
+                        { value: 'Low', label: 'Low' },
+                        { value: 'Moderate', label: 'Moderate' },
+                        { value: 'High', label: 'High' }
+                      ]}
+                    />
+                    <label className="text-xs font-medium text-muted-foreground block mt-2">Active Calories Burned</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={caloriesBurned}
+                      onChange={(e) => setCaloriesBurned(parseInt(e.target.value))}
+                      disabled={loading}
+                      className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:ring-2 focus:ring-border outline-none"
+                    />
+                  </div>
+
+                  {/* Fitness Coach Plan */}
+                  <h4 className="text-foreground text-sm font-medium mt-4 flex items-center gap-2"><Activity size={16} /> Fitness Coach</h4>
+                  <div className="space-y-2 pl-2 border-l border-border">
+                    <label className="text-xs font-medium text-muted-foreground block">Incoming Signal (Workout Context)</label>
+                    <textarea
+                      value={fitnessCoachPlan}
+                      onChange={(e) => setFitnessCoachPlan(e.target.value)}
+                      disabled={loading}
+                      rows={4}
+                      className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:ring-2 focus:ring-border outline-none resize-none"
+                    ></textarea>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Action Button */}
             <button
               onClick={startNutritionSession}
               disabled={loading}
-              className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold text-white transition-all ${loading ? 'bg-stone-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 shadow-md hover:shadow-lg'}`}
+              className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold text-white transition-all ${loading ? 'bg-muted cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 shadow-md hover:shadow-lg'}`}
             >
               {loading ? (
                 <>
@@ -405,36 +571,36 @@ const NutritionistView: React.FC = () => {
           </>
         ) : (
           // Scanner Mode Input
-          <div className="bg-white border border-stone-200 rounded-xl p-6 shadow-sm">
+          <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
             <div className="flex items-center gap-2 mb-6">
-              <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+              <div className="p-2 bg-blue-950/50 text-blue-400 rounded-lg border border-blue-800">
                 <Target size={20} />
               </div>
               <div>
-                <h3 className="text-stone-900 font-bold">NutriScan AI</h3>
-                <p className="text-xs text-stone-400">Scan food for instant analysis</p>
+                <h3 className="text-foreground font-bold">NutriScan AI</h3>
+                <p className="text-xs text-muted-foreground">Scan food for instant analysis</p>
               </div>
             </div>
 
             <div className="space-y-4">
-              <div className={`relative border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center transition-all ${scanFile ? 'border-blue-500 bg-blue-50' : 'border-stone-200 hover:border-blue-400 hover:bg-stone-50'}`}>
+              <div className={`relative border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center transition-all ${scanFile ? 'border-blue-600 bg-blue-950/20' : 'border-border hover:border-blue-600 hover:bg-secondary'}`}>
                 {scanPreview ? (
                   <div className="relative w-full aspect-square rounded-lg overflow-hidden mb-4 shadow-sm">
                     <img src={scanPreview} alt="Preview" className="w-full h-full object-cover" />
                     <button
                       onClick={() => { setScanFile(null); setScanPreview(null); setScanResult(null); }}
-                      className="absolute top-2 right-2 p-1 bg-white rounded-full shadow-md text-stone-500 hover:text-red-500"
+                      className="absolute top-2 right-2 p-1 bg-card rounded-full shadow-md text-muted-foreground hover:text-red-400 border border-border"
                     >
                       <div className="w-4 h-4 flex items-center justify-center">×</div>
                     </button>
                   </div>
                 ) : (
                   <>
-                    <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-3">
+                    <div className="w-12 h-12 bg-blue-950/50 text-blue-400 rounded-full flex items-center justify-center mb-3 border border-blue-800">
                       <Target size={24} />
                     </div>
-                    <p className="text-sm font-medium text-stone-700 mb-1">Click to upload image</p>
-                    <p className="text-xs text-stone-400">Supports JPG, PNG</p>
+                    <p className="text-sm font-medium text-foreground mb-1">Click to upload image</p>
+                    <p className="text-xs text-muted-foreground">Supports JPG, PNG</p>
                   </>
                 )}
 
@@ -451,7 +617,7 @@ const NutritionistView: React.FC = () => {
               <button
                 onClick={startScan}
                 disabled={loading || !scanFile}
-                className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold text-white transition-all ${loading || !scanFile ? 'bg-stone-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg'}`}
+                className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold text-white transition-all ${loading || !scanFile ? 'bg-muted cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg'}`}
               >
                 {loading ? (
                   <>
@@ -470,10 +636,10 @@ const NutritionistView: React.FC = () => {
         )}
       </div>
 
-      {/* Center/Right: Results Visualization */}
+      {/* Right Column: Meal Plan Results */}
       <div className="lg:col-span-2 flex flex-col gap-6">
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3 text-red-700">
+          <div className="bg-red-950/50 border border-red-800 rounded-xl p-4 flex items-center gap-3 text-red-400">
             <AlertTriangle size={20} />
             <p className="text-sm">{error}</p>
           </div>
@@ -481,15 +647,15 @@ const NutritionistView: React.FC = () => {
 
         {mode === 'planner' ? (
           // Meal Planner Results (Existing)
-          <div className="flex-1 bg-white border border-stone-200 rounded-xl p-6 shadow-sm flex flex-col relative overflow-hidden min-h-[500px]">
+          <div className="flex-1 bg-card border border-border rounded-xl p-6 shadow-sm flex flex-col relative overflow-hidden min-h-[500px]">
             {/* Header */}
-            <div className="flex justify-between items-start mb-6 border-b border-stone-100 pb-4">
+            <div className="flex justify-between items-start mb-6 border-b border-border pb-4">
               <div>
-                <h2 className="text-2xl font-bold text-stone-900">Your Personalized Meal</h2>
-                <p className="text-stone-500 text-sm">AI-crafted based on your goals, wellness & workout</p>
+                <h2 className="text-2xl font-bold text-foreground">Your Personalized Meal</h2>
+                <p className="text-muted-foreground text-sm">AI-crafted based on your goals, wellness & workout</p>
               </div>
               {parsedPlan && (
-                <div className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold border border-emerald-100 flex items-center gap-1">
+                <div className="bg-emerald-950/50 text-emerald-400 px-3 py-1 rounded-full text-xs font-bold border border-emerald-800 flex items-center gap-1">
                   <CheckCircle size={14} />
                   PLAN READY
                 </div>
@@ -500,106 +666,123 @@ const NutritionistView: React.FC = () => {
             {loading ? (
               <div className="flex-1 flex flex-col items-center justify-center space-y-6 opacity-60">
                 <div className="relative w-20 h-20">
-                  <div className="absolute inset-0 border-4 border-stone-200 rounded-full"></div>
+                  <div className="absolute inset-0 border-4 border-border rounded-full"></div>
                   <div className="absolute inset-0 border-4 border-t-emerald-500 border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin"></div>
                 </div>
-                <p className="text-stone-400 font-mono text-sm">Consulting Nutritionist Agent...</p>
+                <p className="text-muted-foreground font-mono text-sm">Consulting Nutritionist Agent...</p>
               </div>
             ) : parsedPlan ? (
               <div className="flex-1 overflow-y-auto pr-2 space-y-6">
                 {/* Intro Card */}
                 {parsedPlan.intro && (
-                  <div className="bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 rounded-xl p-4 border border-indigo-100">
+                  <div className="bg-gradient-to-r from-indigo-950/50 via-purple-950/50 to-pink-950/50 rounded-xl p-4 border border-indigo-800">
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg flex items-center justify-center flex-shrink-0">
                         <Sparkles className="text-white" size={20} />
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-indigo-900 mb-1">Personalized for You</p>
-                        <p className="text-stone-600 text-sm leading-relaxed">{parsedPlan.intro}</p>
+                        <p className="text-sm font-medium text-indigo-300 mb-1">Personalized for You</p>
+                        <p className="text-muted-foreground text-sm leading-relaxed">{parsedPlan.intro}</p>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Meal Cards Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {parsedPlan.mainDish && (
-                    <MealCard item={parsedPlan.mainDish} isMain={true} dietType={dietType} />
+                {/* Collapsible Meal Sections */}
+                <div className="space-y-4">
+                  {parsedPlan.meals.breakfast && (
+                    <CollapsibleMealSection
+                      meal={parsedPlan.meals.breakfast}
+                      mealType="breakfast"
+                      dietType={dietType}
+                      budget={budget}
+                      defaultOpen={true}
+                    />
                   )}
-                  {parsedPlan.accompaniments.map((acc, idx) => (
-                    <MealCard key={idx} item={acc} dietType={dietType} />
-                  ))}
+                  {parsedPlan.meals.lunch && (
+                    <CollapsibleMealSection
+                      meal={parsedPlan.meals.lunch}
+                      mealType="lunch"
+                      dietType={dietType}
+                      budget={budget}
+                    />
+                  )}
+                  {parsedPlan.meals.dinner && (
+                    <CollapsibleMealSection
+                      meal={parsedPlan.meals.dinner}
+                      mealType="dinner"
+                      dietType={dietType}
+                      budget={budget}
+                    />
+                  )}
                 </div>
 
-                {/* Total Cost Badge */}
-                {parsedPlan.totalCost > 0 && (
-                  <div className="flex items-center justify-between bg-gradient-to-r from-stone-50 to-stone-100 rounded-xl p-4 border border-stone-200">
+                {/* Total Daily Cost */}
+                {parsedPlan.totalDailyCost > 0 && (
+                  <div className="flex items-center justify-between bg-secondary rounded-xl p-4 border border-border">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
-                        <IndianRupee className="text-emerald-600" size={20} />
+                      <div className="w-10 h-10 bg-emerald-900/50 rounded-lg flex items-center justify-center border border-emerald-800">
+                        <IndianRupee className="text-emerald-400" size={20} />
                       </div>
                       <div>
-                        <p className="text-xs text-stone-500 font-medium">Total Meal Cost</p>
-                        <p className="text-2xl font-bold text-stone-800">₹{parsedPlan.totalCost}</p>
+                        <p className="text-xs text-muted-foreground font-medium">Total Daily Cost</p>
+                        <p className="text-2xl font-bold text-foreground">₹{parsedPlan.totalDailyCost}</p>
                       </div>
                     </div>
-                    <div className={`px-4 py-2 rounded-full text-sm font-bold ${parsedPlan.totalCost <= budget
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-red-100 text-red-700'
-                      }`}>
-                      {parsedPlan.totalCost <= budget
-                        ? `✓ Within ₹${budget} budget`
-                        : `Over budget by ₹${parsedPlan.totalCost - budget}`
-                      }
+                    <div className="text-sm text-muted-foreground">
+                      Budget: ₹{budget} × 3 meals = ₹{budget * 3}
                     </div>
                   </div>
                 )}
 
-                {/* Micronutrient Grid */}
+                {/* Total Daily Macros Grid */}
                 <div>
-                  <h4 className="text-xs font-bold text-stone-400 uppercase mb-3 flex items-center gap-2">
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase mb-3 flex items-center gap-2">
                     <Dumbbell size={14} />
-                    Nutrition Breakdown
+                    Total Daily Nutrition
                   </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <NutrientPill
                       label="Protein"
-                      value={parsedPlan.nutrients.protein.total}
+                      value={parsedPlan.totalMacros.protein}
                       unit="g"
-                      breakdown={parsedPlan.nutrients.protein.breakdown}
-                      color="bg-emerald-100"
-                      icon={<Flame className="text-emerald-600" size={18} />}
+                      color="bg-emerald-900/50"
+                      icon={<Flame className="text-emerald-400" size={18} />}
                     />
                     <NutrientPill
-                      label="Calcium"
-                      value={parsedPlan.nutrients.calcium.total}
-                      unit="mg"
-                      breakdown={parsedPlan.nutrients.calcium.breakdown}
-                      color="bg-blue-100"
-                      icon={<Target className="text-blue-600" size={18} />}
+                      label="Carbs"
+                      value={parsedPlan.totalMacros.carbs}
+                      unit="g"
+                      color="bg-blue-900/50"
+                      icon={<Target className="text-blue-400" size={18} />}
                     />
                     <NutrientPill
-                      label="Iron"
-                      value={parsedPlan.nutrients.iron.total}
-                      unit="mg"
-                      breakdown={parsedPlan.nutrients.iron.breakdown}
-                      color="bg-amber-100"
-                      icon={<TrendingDown className="text-amber-600" size={18} />}
+                      label="Fat"
+                      value={parsedPlan.totalMacros.fat}
+                      unit="g"
+                      color="bg-amber-900/50"
+                      icon={<TrendingDown className="text-amber-400" size={18} />}
+                    />
+                    <NutrientPill
+                      label="Calories"
+                      value={parsedPlan.totalMacros.calories}
+                      unit=""
+                      color="bg-purple-900/50"
+                      icon={<Sparkles className="text-purple-400" size={18} />}
                     />
                   </div>
                 </div>
 
                 {/* Why It Works */}
                 {parsedPlan.whyItWorks && (
-                  <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl p-4 border border-emerald-100">
+                  <div className="bg-emerald-950/30 rounded-xl p-4 border border-emerald-800">
                     <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center flex-shrink-0">
                         <CheckCircle className="text-white" size={16} />
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-emerald-800 mb-1">Why This Meal Works</p>
-                        <p className="text-stone-600 text-sm leading-relaxed">{parsedPlan.whyItWorks}</p>
+                        <p className="text-sm font-bold text-emerald-400 mb-1">Why This Plan Works</p>
+                        <p className="text-muted-foreground text-sm leading-relaxed">{parsedPlan.whyItWorks}</p>
                       </div>
                     </div>
                   </div>
@@ -608,34 +791,34 @@ const NutritionistView: React.FC = () => {
             ) : mealResult ? (
               // Fallback: If parsing fails, show formatted text
               <div className="flex-1 overflow-y-auto pr-2">
-                <div className="prose prose-stone max-w-none">
-                  <pre className="whitespace-pre-wrap font-sans text-stone-700 leading-relaxed text-sm bg-stone-50 p-6 rounded-lg border border-stone-100">
+                <div className="prose prose-invert max-w-none">
+                  <pre className="whitespace-pre-wrap font-sans text-foreground leading-relaxed text-sm bg-secondary p-6 rounded-lg border border-border">
                     {mealResult}
                   </pre>
                 </div>
               </div>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-stone-400 space-y-4">
+              <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground space-y-4">
                 <div className="relative">
-                  <div className="w-24 h-24 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-2xl flex items-center justify-center">
-                    <Utensils size={40} className="text-emerald-300" />
+                  <div className="w-24 h-24 bg-secondary rounded-2xl flex items-center justify-center border border-border">
+                    <Utensils size={40} className="text-muted-foreground opacity-50" />
                   </div>
                 </div>
                 <p className="text-sm font-medium">Configure your preferences and generate a plan</p>
-                <p className="text-xs text-stone-300">Your personalized meal will appear here</p>
+                <p className="text-xs text-muted-foreground">Your personalized meal will appear here</p>
               </div>
             )}
           </div>
         ) : (
           // Scanner Mode Results
-          <div className="flex-1 bg-white border border-stone-200 rounded-xl p-6 shadow-sm flex flex-col relative overflow-hidden min-h-[500px]">
-            <div className="flex justify-between items-start mb-6 border-b border-stone-100 pb-4">
+          <div className="flex-1 bg-card border border-border rounded-xl p-6 shadow-sm flex flex-col relative overflow-hidden min-h-[500px]">
+            <div className="flex justify-between items-start mb-6 border-b border-border pb-4">
               <div>
-                <h2 className="text-2xl font-bold text-stone-900">NutriScan Analysis</h2>
-                <p className="text-stone-500 text-sm">Visual analysis via Gemini Vision</p>
+                <h2 className="text-2xl font-bold text-foreground">NutriScan Analysis</h2>
+                <p className="text-muted-foreground text-sm">Visual analysis via Gemini Vision</p>
               </div>
               {scanResult && (
-                <div className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-bold border border-blue-100 flex items-center gap-1">
+                <div className="bg-blue-950/50 text-blue-400 px-3 py-1 rounded-full text-xs font-bold border border-blue-800 flex items-center gap-1">
                   <Target size={14} />
                   ANALYSIS COMPLETE
                 </div>
@@ -645,59 +828,59 @@ const NutritionistView: React.FC = () => {
             {loading ? (
               <div className="flex-1 flex flex-col items-center justify-center space-y-6 opacity-60">
                 <div className="relative w-20 h-20">
-                  <div className="absolute inset-0 border-4 border-stone-200 rounded-full"></div>
+                  <div className="absolute inset-0 border-4 border-border rounded-full"></div>
                   <div className="absolute inset-0 border-4 border-t-blue-500 border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin"></div>
                 </div>
-                <p className="text-stone-400 font-mono text-sm">Scanning image contents...</p>
+                <p className="text-muted-foreground font-mono text-sm">Scanning image contents...</p>
               </div>
             ) : scanResult ? (
               <div className="flex-1 overflow-y-auto pr-2 space-y-6">
                 {/* Product Header */}
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs font-bold text-stone-400 uppercase tracking-wider">{scanResult.brandName}</p>
-                    <h3 className="text-3xl font-bold text-stone-900">{scanResult.productName}</h3>
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{scanResult.brandName}</p>
+                    <h3 className="text-3xl font-bold text-foreground">{scanResult.productName}</h3>
                     <div className="flex items-center gap-2 mt-2">
-                      <span className="px-2 py-1 bg-stone-100 rounded text-xs font-medium text-stone-600">{scanResult.processingLabel}</span>
-                      {scanResult.isExpired && <span className="px-2 py-1 bg-red-100 text-red-600 rounded text-xs font-bold">⚠️ EXPIRED</span>}
+                      <span className="px-2 py-1 bg-secondary rounded text-xs font-medium text-muted-foreground border border-border">{scanResult.processingLabel}</span>
+                      {scanResult.isExpired && <span className="px-2 py-1 bg-red-950/50 text-red-400 rounded text-xs font-bold border border-red-800">⚠️ EXPIRED</span>}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className={`text-4xl font-bold ${scanResult.healthScore >= 70 ? 'text-emerald-600' : scanResult.healthScore >= 40 ? 'text-amber-500' : 'text-red-600'}`}>
+                    <div className={`text-4xl font-bold ${scanResult.healthScore >= 70 ? 'text-emerald-400' : scanResult.healthScore >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
                       {scanResult.healthScore}
                     </div>
-                    <p className="text-xs text-stone-400 font-medium">Health Score</p>
+                    <p className="text-xs text-muted-foreground font-medium">Health Score</p>
                   </div>
                 </div>
 
                 {/* Nutrition Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="bg-stone-50 p-3 rounded-xl border border-stone-100">
-                    <p className="text-xs text-stone-400 mb-1">Calories</p>
-                    <p className="text-xl font-bold text-stone-800">{scanResult.nutrition.calories}</p>
+                  <div className="bg-secondary p-3 rounded-xl border border-border">
+                    <p className="text-xs text-muted-foreground mb-1">Calories</p>
+                    <p className="text-xl font-bold text-foreground">{scanResult.nutrition.calories}</p>
                   </div>
-                  <div className="bg-stone-50 p-3 rounded-xl border border-stone-100">
-                    <p className="text-xs text-stone-400 mb-1">Protein</p>
-                    <p className="text-xl font-bold text-stone-800">{scanResult.nutrition.protein}g</p>
+                  <div className="bg-secondary p-3 rounded-xl border border-border">
+                    <p className="text-xs text-muted-foreground mb-1">Protein</p>
+                    <p className="text-xl font-bold text-foreground">{scanResult.nutrition.protein}g</p>
                   </div>
-                  <div className="bg-stone-50 p-3 rounded-xl border border-stone-100">
-                    <p className="text-xs text-stone-400 mb-1">Carbs</p>
-                    <p className="text-xl font-bold text-stone-800">{scanResult.nutrition.carbs}g</p>
+                  <div className="bg-secondary p-3 rounded-xl border border-border">
+                    <p className="text-xs text-muted-foreground mb-1">Carbs</p>
+                    <p className="text-xl font-bold text-foreground">{scanResult.nutrition.carbs}g</p>
                   </div>
-                  <div className="bg-stone-50 p-3 rounded-xl border border-stone-100">
-                    <p className="text-xs text-stone-400 mb-1">Sugar</p>
-                    <p className="text-xl font-bold text-stone-800">{scanResult.nutrition.sugar}g</p>
+                  <div className="bg-secondary p-3 rounded-xl border border-border">
+                    <p className="text-xs text-muted-foreground mb-1">Sugar</p>
+                    <p className="text-xl font-bold text-foreground">{scanResult.nutrition.sugar}g</p>
                   </div>
                 </div>
 
                 {/* Warnings */}
                 {scanResult.warnings.length > 0 && (
-                  <div className="bg-red-50 border border-red-100 rounded-xl p-4">
-                    <h4 className="text-sm font-bold text-red-800 mb-2 flex items-center gap-2">
+                  <div className="bg-red-950/30 border border-red-800 rounded-xl p-4">
+                    <h4 className="text-sm font-bold text-red-400 mb-2 flex items-center gap-2">
                       <AlertTriangle size={16} />
                       Health Warnings
                     </h4>
-                    <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
+                    <ul className="list-disc list-inside text-sm text-red-400/80 space-y-1">
                       {scanResult.warnings.map((w: string, i: number) => (
                         <li key={i}>{w}</li>
                       ))}
@@ -707,16 +890,16 @@ const NutritionistView: React.FC = () => {
 
                 {/* Ingredients */}
                 <div>
-                  <h4 className="text-sm font-bold text-stone-800 mb-3">Ingredient Analysis</h4>
+                  <h4 className="text-sm font-bold text-foreground mb-3">Ingredient Analysis</h4>
                   <div className="space-y-2">
                     {scanResult.ingredients.map((ing: any, idx: number) => (
-                      <div key={idx} className="flex items-start gap-3 p-3 bg-white border border-stone-100 rounded-lg hover:shadow-sm transition-all">
+                      <div key={idx} className="flex items-start gap-3 p-3 bg-card border border-border rounded-lg hover:border-muted transition-all">
                         <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${ing.riskLevel === 'High' ? 'bg-red-500' : ing.riskLevel === 'Medium' ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
                         <div>
-                          <p className="text-sm font-bold text-stone-800">{ing.name}</p>
-                          <p className="text-xs text-stone-500">{ing.description}</p>
+                          <p className="text-sm font-bold text-foreground">{ing.name}</p>
+                          <p className="text-xs text-muted-foreground">{ing.description}</p>
                         </div>
-                        <span className="ml-auto text-xs font-mono bg-stone-50 px-2 py-1 rounded">{ing.tag}</span>
+                        <span className="ml-auto text-xs font-mono bg-secondary px-2 py-1 rounded border border-border">{ing.tag}</span>
                       </div>
                     ))}
                   </div>
@@ -724,16 +907,16 @@ const NutritionistView: React.FC = () => {
 
                 {/* Alternatives */}
                 {scanResult.alternatives.length > 0 && (
-                  <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
-                    <h4 className="text-sm font-bold text-emerald-800 mb-2 flex items-center gap-2">
+                  <div className="bg-emerald-950/30 border border-emerald-800 rounded-xl p-4">
+                    <h4 className="text-sm font-bold text-emerald-400 mb-2 flex items-center gap-2">
                       <Leaf size={16} />
                       Healthier Alternatives
                     </h4>
                     <div className="space-y-2">
                       {scanResult.alternatives.map((alt: any, idx: number) => (
-                        <div key={idx} className="flex justify-between items-center text-sm p-2 bg-white/60 rounded-lg">
-                          <span className="font-bold text-emerald-900">{alt.name}</span>
-                          <span className="text-xs text-emerald-700">{alt.reason}</span>
+                        <div key={idx} className="flex justify-between items-center text-sm p-2 bg-card/50 rounded-lg border border-border">
+                          <span className="font-bold text-emerald-400">{alt.name}</span>
+                          <span className="text-xs text-emerald-400/80">{alt.reason}</span>
                         </div>
                       ))}
                     </div>
@@ -741,8 +924,8 @@ const NutritionistView: React.FC = () => {
                 )}
               </div>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-stone-400 space-y-4">
-                <div className="p-4 bg-blue-50 text-blue-300 rounded-full">
+              <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground space-y-4">
+                <div className="p-4 bg-blue-950/30 text-blue-400/50 rounded-full border border-blue-800">
                   <Target size={40} />
                 </div>
                 <p className="text-sm font-medium">Upload an image to start scanning</p>

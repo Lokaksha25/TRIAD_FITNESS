@@ -11,6 +11,7 @@ class SaveWorkoutTool(BaseTool):
         "Saves the completed workout details to the Cloud Database. "
         "Input should be a summary string like: 'Squats: 15 reps. Good depth.'"
     )
+    user_id: str = "user_123"
 
     def _run(self, workout_summary: str) -> str:
         try:
@@ -39,7 +40,8 @@ class SaveWorkoutTool(BaseTool):
                 "id": unique_id,
                 "values": vector_values,
                 "metadata": {"text": text_to_save, "type": "workout_log"}
-            }])
+            }],
+            namespace=self.user_id)
 
             return f"SUCCESS: Saved to Cloud Memory (ID: {unique_id})"
 
