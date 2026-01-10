@@ -171,6 +171,11 @@ class WeeklyPlanRequest(BaseModel):
     user_id: str
     force_regenerate: bool = False  # Override cache and force new plan generation
 
+class ManagerRegenerateRequest(BaseModel):
+    """Request for regenerating manager briefing with user suggestions"""
+    user_id: str
+    suggestions: str  # User's override preferences/suggestions
+
 class OnboardingRequest(BaseModel):
     """User onboarding data from initial setup"""
     user_id: str
@@ -2151,6 +2156,100 @@ async def get_manager_conflicts(user_id: str):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.post("/api/manager/regenerate")
+async def regenerate_manager_briefing(request: ManagerRegenerateRequest):
+    """
+    Regenerate Daily Briefing with user suggestions/override preferences.
+    The suggestions will be incorporated into the AI prompt.
+    """
+    try:
+        from backend.agents.manager_agent import generate_daily_briefing
+        
+        print(f"🔄 Regenerating manager briefing for user: {request.user_id}")
+        print(f"📝 User suggestions: {request.suggestions}")
+        
+        # Generate briefing with user suggestions
+        briefing = generate_daily_briefing(
+            user_id=request.user_id,
+            force_regenerate=True,
+            user_suggestions=request.suggestions
+        )
+        
+        # Transform to frontend format (same as /api/manager/conflicts)
+        if briefing.get('conflicts') and len(briefing['conflicts']) > 0:
+            sources = []
+            
+            wellness = briefing['wellness_assessment']
+            sources.append({
+                "agent": "Wellness Agent",
+                "priority": "High" if wellness['readiness_score'] < 60 else "Medium",
+                "recommendation": f"Readiness score: {wellness['readiness_score']}/100. Sleep: {wellness['sleep_hours']}h. Status: {wellness['state']}"
+            })
+            
+            workout = briefing['workout_plan']
+            sources.append({
+                "agent": "Physical Trainer",
+                "priority": "High",
+                "recommendation": f"Recommends: {workout['workout']} ({workout['intensity']} intensity, {workout['duration']})"
+            })
+            
+            conflict = briefing['conflicts'][0]
+            response = {
+                "sources": sources,
+                "resolution": {
+                    "decision": f"Override: {workout['workout']}",
+                    "reasoning": conflict['issue'] + ". " + conflict['resolution'],
+                    "impact": [
+                        f"Trainer: Adjusted to {workout['workout']}",
+                        f"Nutrition: {briefing['nutrition_plan']['total_calories']} with {briefing['nutrition_plan']['protein']} protein",
+                        f"Safety: {briefing['final_decision']['priority']}"
+                    ]
+                }
+            }
+        else:
+            wellness = briefing['wellness_assessment']
+            workout = briefing['workout_plan']
+            nutrition = briefing['nutrition_plan']
+            
+            response = {
+                "sources": [
+                    {
+                        "agent": "Wellness Agent",
+                        "priority": "Medium",
+                        "recommendation": f"Readiness: {wellness['readiness_score']}/100. {wellness['state']}"
+                    },
+                    {
+                        "agent": "Physical Trainer",
+                        "priority": "Medium",
+                        "recommendation": f"{workout['workout']} - {workout['intensity']} intensity for {workout['duration']}"
+                    },
+                    {
+                        "agent": "Nutritionist",
+                        "priority": "Medium",
+                        "recommendation": f"{nutrition['total_calories']} with {nutrition['protein']} protein"
+                    }
+                ],
+                "resolution": {
+                    "decision": "Updated Daily Plan (User Override)",
+                    "reasoning": f"Plan updated based on user preferences. {workout['rationale']}",
+                    "impact": [
+                        f"Workout: {workout['workout']}",
+                        f"Nutrition: {nutrition['total_calories']}",
+                        f"Pre-workout: {nutrition.get('pre_workout', 'N/A')}",
+                        f"Post-workout: {nutrition.get('post_workout', 'N/A')}"
+                    ]
+                }
+            }
+        
+        print(f"✅ Regenerated briefing: {briefing['final_decision']['summary']}")
+        return response
+        
+    except Exception as e:
+        print(f"❌ Error regenerating briefing: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/trainer/stop")

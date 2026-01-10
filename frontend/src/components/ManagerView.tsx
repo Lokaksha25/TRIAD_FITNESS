@@ -1,11 +1,16 @@
 import React from 'react';
-import { ArrowRight, CheckCircle2, Scale } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Scale, RefreshCw, Send, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const ManagerView: React.FC = () => {
     const { currentUser } = useAuth();
     const [conflict, setConflict] = React.useState<any>(null);
     const [loading, setLoading] = React.useState(true);
+
+    // Override functionality state
+    const [showOverride, setShowOverride] = React.useState(false);
+    const [suggestions, setSuggestions] = React.useState('');
+    const [regenerating, setRegenerating] = React.useState(false);
 
     React.useEffect(() => {
         if (currentUser) {
@@ -27,6 +32,30 @@ const ManagerView: React.FC = () => {
             console.error("Failed to fetch manager briefing", e);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleRegenerate = async () => {
+        if (!currentUser || !suggestions.trim()) return;
+
+        setRegenerating(true);
+        try {
+            const res = await fetch('/api/manager/regenerate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: currentUser.uid,
+                    suggestions: suggestions.trim()
+                })
+            });
+            const data = await res.json();
+            setConflict(data);
+            setShowOverride(false);
+            setSuggestions('');
+        } catch (e) {
+            console.error("Failed to regenerate briefing", e);
+        } finally {
+            setRegenerating(false);
         }
     };
 
@@ -95,7 +124,7 @@ const ManagerView: React.FC = () => {
                         </p>
                     </div>
 
-                    <div className="bg-secondary rounded-xl p-6 border border-border mt-auto">
+                    <div className="bg-secondary rounded-xl p-6 border border-border">
                         <h4 className="text-muted-foreground text-xs font-bold uppercase mb-4">Protocol Updates Executed</h4>
                         <ul className="space-y-3">
                             {conflict.resolution.impact.map((impact: string, idx: number) => (
@@ -105,6 +134,56 @@ const ManagerView: React.FC = () => {
                                 </li>
                             ))}
                         </ul>
+                    </div>
+
+                    {/* Override Section */}
+                    <div className="mt-6 pt-6 border-t border-border">
+                        {!showOverride ? (
+                            <button
+                                onClick={() => setShowOverride(true)}
+                                className="flex items-center space-x-2 px-4 py-2 bg-amber-950/50 text-amber-400 border border-amber-800 rounded-lg hover:bg-amber-900/50 transition-all text-sm font-medium"
+                            >
+                                <RefreshCw size={16} />
+                                <span>Override with Preferences</span>
+                            </button>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-muted-foreground text-xs font-bold uppercase">Your Preferences</h4>
+                                    <button
+                                        onClick={() => { setShowOverride(false); setSuggestions(''); }}
+                                        className="text-muted-foreground hover:text-foreground transition-colors"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                                <textarea
+                                    value={suggestions}
+                                    onChange={(e) => setSuggestions(e.target.value)}
+                                    placeholder="e.g., I want to focus on light cardio today, skip weights..."
+                                    className="w-full p-4 bg-background border border-border rounded-lg text-foreground placeholder-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                                    rows={3}
+                                    disabled={regenerating}
+                                />
+                                <button
+                                    onClick={handleRegenerate}
+                                    disabled={!suggestions.trim() || regenerating}
+                                    className="flex items-center space-x-2 px-4 py-2 bg-emerald-950/50 text-emerald-400 border border-emerald-800 rounded-lg hover:bg-emerald-900/50 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {regenerating ? (
+                                        <>
+                                            <RefreshCw size={16} className="animate-spin" />
+                                            <span>Regenerating...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Send size={16} />
+                                            <span>Regenerate Plan</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

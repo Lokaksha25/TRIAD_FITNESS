@@ -40,7 +40,7 @@ def _get_cache_key(user_id: str, wellness_data: dict, profile: dict) -> str:
 
 
 
-def generate_daily_briefing(user_id: str, force_regenerate: bool = False) -> Dict[str, Any]:
+def generate_daily_briefing(user_id: str, force_regenerate: bool = False, user_suggestions: str = None) -> Dict[str, Any]:
     """
     Main Manager Agent workflow:
     1. Collect data from wellness logs and user profile
@@ -48,12 +48,19 @@ def generate_daily_briefing(user_id: str, force_regenerate: bool = False) -> Dic
     3. Generate workout and nutrition recommendations if needed
     4. Detect conflicts and create unified briefing
     5. Save decisions back to profile
+    
+    If user_suggestions is provided, it will be incorporated into the AI prompt
+    and the cache will be bypassed.
     """
     global _briefing_cache
     
     from backend.server import get_user_profile
     from backend.tools.memory_store import get_wellness_memory, _get_index, _get_embeddings
     import time
+    
+    # Force regenerate if user provided suggestions
+    if user_suggestions:
+        force_regenerate = True
     
     # STEP 1: Collect Wellness Data
     wellness_logs = get_wellness_memory(query="recent wellness readiness biometrics", top_k=1, user_id=user_id)
@@ -93,6 +100,17 @@ def generate_daily_briefing(user_id: str, force_regenerate: bool = False) -> Dic
     model = genai.GenerativeModel('gemini-2.5-flash')
     
     # STEP 4: Generate Unified Daily Plan using Manager Agent
+    # Build user suggestions section if provided
+    user_suggestions_section = ""
+    if user_suggestions:
+        user_suggestions_section = f"""
+**USER OVERRIDE REQUEST:**
+The user has provided specific preferences that MUST be prioritized:
+"{user_suggestions}"
+You MUST incorporate these preferences into your plan while still maintaining safety guidelines.
+"""
+        print(f"📝 User provided override suggestions: {user_suggestions}")
+    
     prompt = f"""You are the Manager Agent (Head Coach) coordinating a team of specialist agents.
 
 **WELLNESS AGENT REPORT:**
@@ -105,7 +123,7 @@ def generate_daily_briefing(user_id: str, force_regenerate: bool = False) -> Dic
 - Goal Phase: {phase}
 - Daily Calories: {calories} kcal
 - Protein Target: {protein_target}g
-
+{user_suggestions_section}
 **YOUR TASK:**
 As the Manager, synthesize a Daily Briefing that coordinates:
 1. Workout recommendation (adjust intensity based on readiness)
@@ -117,6 +135,7 @@ As the Manager, synthesize a Daily Briefing that coordinates:
 - If readiness 60-79: Moderate intensity
 - If readiness >= 80: High intensity allowed
 - Nutrition stays at base calories ± 200 based on workout
+- If user provided override preferences, incorporate them while respecting safety
 
 **OUTPUT (strict JSON, no markdown):**
 {{
