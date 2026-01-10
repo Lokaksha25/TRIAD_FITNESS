@@ -26,17 +26,25 @@ class SquatAnalysisTool(BaseTool):
         return angle
 
     def _run(self, video_path: str = None) -> str:
+        print("🏋️ [SquatTool] _run() called", flush=True)
         # 1. SETUP MODEL - Use absolute path relative to this file's location
         import os
         model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'pose_landmarker_lite.task')
+        print(f"🏋️ [SquatTool] Model path: {model_path}", flush=True)
+        print(f"🏋️ [SquatTool] Model exists: {os.path.exists(model_path)}", flush=True)
+        
         base_options = python.BaseOptions(model_asset_path=model_path)
         options = vision.PoseLandmarkerOptions(
             base_options=base_options,
             running_mode=vision.RunningMode.VIDEO
         )
+        print("🏋️ [SquatTool] Creating pose detector...", flush=True)
         detector = vision.PoseLandmarker.create_from_options(options)
+        print("🏋️ [SquatTool] Detector created", flush=True)
 
+        print("🏋️ [SquatTool] Opening camera...", flush=True)
         cap = cv2.VideoCapture(0)
+        print(f"🏋️ [SquatTool] Camera opened: {cap.isOpened()}", flush=True)
         
         reps = 0
         stage = "up"
@@ -64,6 +72,13 @@ class SquatAnalysisTool(BaseTool):
         MAX_KNEE_HEIGHT_DIFF = 0.15
 
         start_time = time.time()
+
+        # CRITICAL: Create the window explicitly before the loop
+        # This is required when running through FastAPI/uvicorn
+        WINDOW_NAME = 'Squat Analysis'
+        cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_AUTOSIZE)
+        cv2.startWindowThread()
+        print("🏋️ [SquatTool] Window created, starting capture loop...", flush=True)
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -195,7 +210,7 @@ class SquatAnalysisTool(BaseTool):
                 # Debug info for lunge
                 # cv2.putText(frame, f"Sprd: {ankle_spread:.2f} KnDiff: {knee_height_diff:.2f}", (200, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
 
-            cv2.imshow('Squat Analysis', frame)
+            cv2.imshow(WINDOW_NAME, frame)
             
             # Check shared stop signal + 'q' key
             import backend.session_state as session_state

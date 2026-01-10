@@ -40,11 +40,14 @@ class PhysicalTrainerAgent:
                 "1. **PHYSICS**: You use Vision Tools to analyze form (Squats/Pushups).\n"
                 "2. **DATA**: You use `FitnessHistoryRAG` to find out if the user is Fasted, Stressed, or Injured.\n"
                 "3. **LOGISTICS**: You use `GoogleCalendarTool` to check for time constraints.\n\n"
-                "CRITICAL: If the RAG tool says the user is 'Fasted' or 'Stressed', and the Vision tool shows 'Bad Form', "
-                "you MUST prescribe a REGRESSED (easier) workout. Safety first."
+                "**IMPORTANT RULES:**\n"
+                "- If RAG returns 'NO HISTORY FOUND' or 'NEW USER': Assume NORMAL/BASELINE conditions "
+                "(well-rested, fed, low stress). DO NOT assume fasted/stressed without data.\n"
+                "- If RAG shows 'Fasted' or 'Stressed' AND Vision shows 'Bad Form': Prescribe a REGRESSED workout.\n"
+                "- If RAG shows 'Normal' AND Vision shows 'Good Form': Prescribe progressive overload."
             ),
             tools=[squat_tool, pushup_tool, rag_tool, calendar_tool, save_tool],
             llm=my_llm, 
             verbose=True,
-            memory=True
+            memory=False  # Disabled - using Pinecone for memory instead to avoid stale cache
         )

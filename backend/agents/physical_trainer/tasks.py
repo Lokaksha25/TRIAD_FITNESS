@@ -18,7 +18,8 @@ class PhysicalTrainerTasks:
                 "- WAIT for the user to complete reps and for the tool to return the report.\n\n"
                 
                 "**STEP 4: SYNTHESIZE & PRESCRIBE**\n"
-                "- Create a session plan. \n"
+                "- Create a session plan based on ACTUAL data received. \n"
+                "- IF RAG says 'NO HISTORY FOUND' or 'NEW USER' -> Assume BASELINE (normal energy, no stress, no injuries).\n"
                 "- IF Context says 'Low Energy' OR Form says 'Bad Technique' -> Reduce Intensity/Weight.\n"
                 "- IF Context says 'High Energy' AND Form says 'Good' -> Suggest Progressive Overload.\n\n"
 
@@ -29,7 +30,7 @@ class PhysicalTrainerTasks:
             ),
             expected_output=(
                 "A Markdown Workout Plan containing:\n"
-                "1. **Context Analysis**: (e.g., 'Noted you are fasted and sleep-deprived').\n"
+                "1. **Context Analysis**: (e.g., 'New user with baseline conditions' or 'Noted you are fasted and sleep-deprived').\n"
                 "2. **Form Report**: (e.g., 'Rep 3 depth was shallow').\n"
                 "3. **The Prescribed Session**: Specific Warmup, Sets, Reps, and Cooldown tailored to the data.\n"
                 "4. **Save Confirmation**: Verification that the session was saved to the Cloud DB."

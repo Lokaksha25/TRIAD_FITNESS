@@ -84,6 +84,13 @@ class PushupAnalysisTool(BaseTool):
         
         start_time = time.time()
 
+        # CRITICAL: Create the window explicitly before the loop
+        # This is required when running through FastAPI/uvicorn
+        WINDOW_NAME = 'Pushup Analysis'
+        cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_AUTOSIZE)
+        cv2.startWindowThread()
+        print("💪 [PushupTool] Window created, starting capture loop...", flush=True)
+
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
@@ -196,7 +203,7 @@ class PushupAnalysisTool(BaseTool):
                 # 3. Progress Bar (Restored Feature)
                 self._draw_progress_bar(frame, avg_angle, PUSH_DOWN_THRESHOLD, PUSH_UP_THRESHOLD)
 
-            cv2.imshow('Pushup Analysis', frame)
+            cv2.imshow(WINDOW_NAME, frame)
             
             # Check shared stop signal + 'q' key
             import backend.session_state as session_state

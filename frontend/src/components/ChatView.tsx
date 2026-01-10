@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Loader2, Dumbbell, Utensils, Sun, ShieldCheck, User, Bot, Sparkles } from 'lucide-react';
 import { AgentType, ChatMessage } from '../types';
-import { MOCK_MANAGER_DECISION } from '../constants';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAuth } from '../context/AuthContext';
@@ -70,6 +69,9 @@ const ChatView: React.FC = () => {
                 summary: agent.summary
             }));
 
+            // Store manager decision from response (real AI-generated)
+            const managerDecision = data.manager_decision || "Plan synthesized based on current wellness and goals.";
+
             const agentMsg: ChatMessage = {
                 id: 'agents-' + Date.now(),
                 sender: 'agents',
@@ -78,6 +80,19 @@ const ChatView: React.FC = () => {
             };
             setMessages(prev => [...prev, agentMsg]);
             setLoadingStep('reviewing');
+
+            // 3. Manager Decision (Real AI-powered from backend)
+            setTimeout(() => {
+                const managerMsg: ChatMessage = {
+                    id: 'manager-' + Date.now(),
+                    sender: 'manager',
+                    text: managerDecision,
+                    timestamp: new Date()
+                };
+                setMessages(prev => [...prev, managerMsg]);
+                setLoadingStep(null);
+                setIsProcessing(false);
+            }, 1500);
 
         } catch (err) {
             console.error("Chat API Error:", err);
@@ -109,20 +124,20 @@ const ChatView: React.FC = () => {
             };
             setMessages(prev => [...prev, agentMsg]);
             setLoadingStep('reviewing');
-        }
 
-        // 3. Manager Decision (Simulated for now)
-        setTimeout(() => {
-            const managerMsg: ChatMessage = {
-                id: 'manager-' + Date.now(),
-                sender: 'manager',
-                text: MOCK_MANAGER_DECISION,
-                timestamp: new Date()
-            };
-            setMessages(prev => [...prev, managerMsg]);
-            setLoadingStep(null); // Clear all loading indicators
-            setIsProcessing(false);
-        }, 3500);
+            // Show error manager decision
+            setTimeout(() => {
+                const managerMsg: ChatMessage = {
+                    id: 'manager-' + Date.now(),
+                    sender: 'manager',
+                    text: "Unable to generate unified plan. Please check backend connection.",
+                    timestamp: new Date()
+                };
+                setMessages(prev => [...prev, managerMsg]);
+                setLoadingStep(null);
+                setIsProcessing(false);
+            }, 1500);
+        }
     };
 
     const getAgentIcon = (type: AgentType) => {

@@ -632,10 +632,44 @@ async def chat_handler(request: ChatRequest):
             "summary": "Service temporarily unavailable."
         })
     
+    # 4. Manager Agent (AI-powered orchestration)
+    manager_decision_text = ""
+    try:
+        from backend.agents.manager_agent import generate_daily_briefing
+        
+        briefing = generate_daily_briefing(request.user_id)
+        
+        # Format manager decision from briefing
+        workout = briefing.get('workout_plan', {})
+        nutrition = briefing.get('nutrition_plan', {})
+        wellness = briefing.get('wellness_assessment', {})
+        final = briefing.get('final_decision', {})
+        
+        # Build a coherent manager decision text
+        conflict_text = ""
+        if briefing.get('conflicts') and len(briefing['conflicts']) > 0:
+            conflict = briefing['conflicts'][0]
+            conflict_text = f" **Conflict Detected:** {conflict.get('issue', '')}. Resolution: {conflict.get('resolution', '')}."
+        
+        manager_decision_text = f"""**Today's Unified Fitness Plan:**
+
+**Wellness Status:** Readiness {wellness.get('readiness_score', 'N/A')}/100. {wellness.get('state', '')}.
+
+**Workout:** {workout.get('workout', 'N/A')} ({workout.get('intensity', 'N/A')} intensity, {workout.get('duration', 'N/A')}). {workout.get('rationale', '')}
+
+**Nutrition:** {nutrition.get('total_calories', 'N/A')} with {nutrition.get('protein', 'N/A')} protein. Pre-workout: {nutrition.get('pre_workout', 'N/A')}. Post-workout: {nutrition.get('post_workout', 'N/A')}.
+{conflict_text}
+**Final Decision:** {final.get('summary', 'Plan synthesized based on current wellness and goals.')}"""
+        
+        print(f"✅ Manager decision generated")
+    except Exception as e:
+        print(f"❌ Manager error: {e}")
+        manager_decision_text = "Based on all agent inputs, the recommended action has been synthesized. Please review individual agent recommendations above."
+    
     # Return multi-agent response
     return {
         "agents": agent_responses,
-        "manager_decision": "Based on all agent inputs, the recommended action has been synthesized. Please review individual agent recommendations above."
+        "manager_decision": manager_decision_text
     }
 
 def get_user_profile(user_id: str = None) -> dict:
@@ -1776,8 +1810,8 @@ def start_training_session(request: SessionRequest):
             raise HTTPException(status_code=500, detail=f"Task creation failed: {e}")
 
         try:
-            pt_agent = pt_agent_manager.create()
-            print("✅ Agent created successfully")
+            pt_agent = pt_agent_manager.create(user_id=user_id)
+            print(f"✅ Agent created successfully for user: {user_id}")
         except Exception as e:
             print(f"❌ Failed to call create(): {e}")
             raise HTTPException(status_code=500, detail=f"Agent.create() failed: {e}")
