@@ -52,7 +52,7 @@ def generate_daily_briefing(user_id: str, force_regenerate: bool = False) -> Dic
     global _briefing_cache
     
     from backend.server import get_user_profile
-    from tools.memory_store import get_wellness_memory, _get_index, _get_embeddings
+    from backend.tools.memory_store import get_wellness_memory, _get_index, _get_embeddings
     import time
     
     # STEP 1: Collect Wellness Data

@@ -1,5 +1,4 @@
 import React from 'react';
-import { ACTIVE_CONFLICT } from '../constants';
 import { ArrowRight, CheckCircle2, Scale } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -35,7 +34,7 @@ const ManagerView: React.FC = () => {
     if (!conflict) return <div className="p-6 text-muted-foreground">System Nominal. No active conflicts.</div>;
 
     return (
-        <div className="h-full flex flex-col space-y-6">
+        <div className="h-full flex flex-col space-y-6 animate-fade-in">
             {/* Banner */}
             <div className="bg-card border border-border rounded-xl p-6 flex items-center space-x-6 shadow-sm">
                 <div className="bg-secondary p-4 rounded-full border border-border">

@@ -32,7 +32,7 @@ from pinecone import Pinecone
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from groq import Groq
 from groq import Groq
-from backend.tools.memory_store import get_exercise_memory, get_nutrition_memory, get_wellness_memory, format_exercise_context, format_wellness_context
+from backend.tools.memory_store import get_exercise_memory, get_nutrition_memory, get_wellness_memory, format_exercise_context, format_wellness_context, initialize_user_namespace, save_agent_memory
 import backend.session_state as session_state
 
 def extract_json(text):
@@ -98,6 +98,55 @@ class NutritionRequest(BaseModel):
     diet_type: str = "Vegetarian"
     budget: int = 500
     wellness_data: dict = {}
+    fitness_coach_plan: dict = {}
+
+@app.post("/api/user/onboarding")
+async def onboarding_user(request: dict):
+    print(f"🚀 Starting user onboarding for: {request.get('user_id')}")
+    try:
+        user_id = request.get('user_id')
+        email = request.get('email', 'unknown@example.com')
+        name = request.get('name', 'User')
+        
+        if not user_id:
+             raise HTTPException(status_code=400, detail="User ID required")
+
+        # 1. Initialize Namespace (Security + Profile)
+        # This creates the user_profile metadata which ensures the namespace exists
+        init_success = initialize_user_namespace(user_id, email, name)
+        
+        # 2. Save Onboarding Data Details
+        # Construct a detailed profile string for agents to reference
+        profile_text = f"""
+        User Profile Update for {name}:
+        - Goal: {request.get('goal')}
+        - Calories Target: {request.get('calculated_calories')}
+        - Weight: {request.get('weight')}kg
+        - Height: {request.get('height')}cm
+        - Activity Level: {request.get('activity_level')}
+        """
+        
+        log_id = save_agent_memory(
+            agent_type="system",
+            content=profile_text,
+            metadata={
+                "type": "user_profile_data",
+                "goal": request.get('goal'),
+                "calories": request.get('calculated_calories'),
+                "weight": request.get('weight'),
+                "height": request.get('height')
+            },
+            user_id=user_id
+        )
+        
+        time.sleep(1) # Intentional small delay to ensure Pinecone indexing starts logic
+        
+        print(f"✅ Onboarding complete for {user_id}. Log: {log_id}")
+        return {"status": "success", "message": "User setup complete", "log_id": log_id}
+        
+    except Exception as e:
+        print(f"❌ Onboarding error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     fitness_coach_plan: str = ""
     user_id: str
 
@@ -592,7 +641,7 @@ async def chat_handler(request: ChatRequest):
 def get_user_profile(user_id: str = None) -> dict:
     """Fetch the latest user profile from Pinecone."""
     try:
-        from tools.memory_store import _get_index, get_profile_query_vector
+        from backend.tools.memory_store import _get_index, get_profile_query_vector
         
         index = _get_index()
         
@@ -621,13 +670,16 @@ def get_user_profile(user_id: str = None) -> dict:
     except Exception as e:
         print(f"Error fetching user profile: {e}")
         return None
-
 def get_wellness_data(user_id: str = None) -> dict:
     """Fetch the latest wellness data from Pinecone (stored by wellness agent)."""
     try:
-        from tools.memory_store import get_wellness_memory
+        from backend.tools.memory_store import get_wellness_memory
         
         # Use the proper wellness memory retrieval function
+        if not user_id:
+            # Fallback for when current user is unknown (should be rare)
+            pass
+            
         wellness_logs = get_wellness_memory(query="recent wellness readiness", top_k=1, user_id=user_id)
         
         # Default values
@@ -690,17 +742,9 @@ def get_wellness_data(user_id: str = None) -> dict:
 def detect_injury_from_history(user_id: str = None) -> bool:
     """
     Detect if user has an injury based on wellness and exercise history.
-    
-    Checks for:
-    - Low readiness scores (<40) for 3+ consecutive analyses
-    - Poor form ratings (<5) with recurring issues
-    - Keywords like 'injury' or 'pain' in wellness metadata
-    
-    Returns:
-        True if injury detected, False otherwise
     """
     try:
-        from tools.memory_store import get_wellness_memory, get_exercise_memory
+        from backend.tools.memory_store import get_wellness_memory, get_exercise_memory
         
         # Check wellness data for low readiness
         wellness_logs = get_wellness_memory(query="recent wellness readiness", top_k=5, user_id=user_id)
@@ -748,13 +792,6 @@ def detect_injury_from_history(user_id: str = None) -> bool:
 def is_plan_valid(plan_metadata: dict) -> bool:
     """
     Check if a cached training plan is still valid.
-    
-    Plan is valid if:
-    - Created less than 5 weeks ago (35 days)
-    - No injury was detected when checking history
-    
-    Returns:
-        True if plan is valid and can be reused, False otherwise
     """
     if not plan_metadata:
         return False
@@ -791,14 +828,6 @@ def is_plan_valid(plan_metadata: dict) -> bool:
 def generate_weekly_training_plan(user_profile: dict = None, wellness_data: dict = None, nutrition_data: dict = None) -> dict:
     """
     Generate a new weekly training plan using AI (Groq).
-    
-    Args:
-        user_profile: User fitness profile (calories, phase, etc.)
-        wellness_data: Current wellness/biometric data
-        nutrition_data: Current nutrition status
-        
-    Returns:
-        Dictionary with weekly plan including exercises, sets, reps for each day
     """
     try:
         client = Groq(api_key=os.getenv("GROQ_API_KEY"))
@@ -930,7 +959,7 @@ FORMAT REQUIREMENTS:
       ]
     }}
   ],
-  "program_notes": "Explain WHY this program fits the user's {phase} phase at {calories} kcal. Reference specific adaptations expected.",
+  "program_notes": "Explain WHY this program fits the user's {{phase}} phase at {{calories}} kcal. Reference specific adaptations expected.",
   "progression_strategy": "Specific week-to-week progression plan (e.g., 'Week 1-3: Add 2.5kg per session, Week 4: Deload 20%, Week 5: Test new maxes')"
 }}
 
@@ -974,9 +1003,9 @@ Now create the program in valid JSON format."""
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            model="llama-3.3-70b-versatile",  # Updated from deprecated 3.1 to 3.3
-            temperature=0.6,  # Slightly lower for more consistent quality
-            max_tokens=3000,  # Increased for detailed programs
+            model="llama-3.3-70b-versatile",
+            temperature=0.6,
+            max_tokens=3000,
         )
         
         result = response.choices[0].message.content
@@ -992,97 +1021,16 @@ Now create the program in valid JSON format."""
             
     except Exception as e:
         print(f"❌ Error generating plan: {e}")
-        # Improved fallback plan that adapts to user phase
-        phase = user_profile.get('phase', 'maintenance') if user_profile else 'maintenance'
-        calories = user_profile.get('calories', 2000) if user_profile else 2000
-        
-        # Adjust volume based on phase
-        if phase == "bulking":
-            sets_main = 5
-            reps_main = 10
-            sets_acc = 4
-            reps_acc = 12
-        elif phase == "cutting":
-            sets_main = 4
-            reps_main = 6
-            sets_acc = 3
-            reps_acc = 10
-        else:  # maintenance
-            sets_main = 4
-            reps_main = 8
-            sets_acc = 3
-            reps_acc = 10
-        
+        # Improve fallback plan
         return {
-            "weekly_schedule": [
-                {
-                    "day": "Monday",
-                    "focus": f"PUSH - Chest/Shoulders/Triceps ({phase.capitalize()} Phase)",
-                    "exercises": [
-                        {"name": "Barbell Bench Press (Flat)", "sets": sets_main, "reps": reps_main, "rest": "3 min", "notes": "Main horizontal press, compound movement"},
-                        {"name": "Dumbbell Overhead Press (Seated)", "sets": sets_acc, "reps": reps_acc, "rest": "90s", "notes": "Shoulder development"},
-                        {"name": "Dumbbell Incline Press (30°)", "sets": sets_acc, "reps": reps_acc, "rest": "90s", "notes": "Upper chest focus"},
-                        {"name": "Cable Tricep Pushdowns", "sets": 3, "reps": 15, "rest": "60s", "notes": "Tricep isolation"}
-                    ]
-                },
-                {
-                    "day": "Tuesday",
-                    "focus": "Rest Day",
-                    "exercises": []
-                },
-                {
-                    "day": "Wednesday",
-                    "focus": f"PULL - Back/Biceps ({phase.capitalize()} Phase)",
-                    "exercises": [
-                        {"name": "Barbell Deadlift (Conventional)", "sets": sets_main, "reps": reps_main - 2, "rest": "3 min", "notes": "Main posterior chain, compound"},
-                        {"name": "Barbell Bent-Over Rows", "sets": sets_acc, "reps": reps_acc, "rest": "2 min", "notes": "Horizontal pull, back thickness"},
-                        {"name": "Pull-Ups (Weighted if possible)", "sets": sets_acc, "reps": reps_main, "rest": "2 min", "notes": "Vertical pull, lat width"},
-                        {"name": "Barbell Curls", "sets": 3, "reps": 12, "rest": "60s", "notes": "Bicep isolation"}
-                    ]
-                },
-                {
-                    "day": "Thursday",
-                    "focus": "Rest Day",
-                    "exercises": []
-                },
-                {
-                    "day": "Friday",
-                    "focus": f"LEGS - Quads/Hamstrings/Glutes ({phase.capitalize()} Phase)",
-                    "exercises": [
-                        {"name": "Barbell Back Squat (Low Bar)", "sets": sets_main, "reps": reps_main, "rest": "3 min", "notes": "Main quad/glute compound"},
-                        {"name": "Romanian Deadlifts", "sets": sets_acc, "reps": reps_acc, "rest": "2 min", "notes": "Hamstring and glute development"},
-                        {"name": "Leg Press (45° Sled)", "sets": sets_acc, "reps": reps_acc + 2, "rest": "90s", "notes": "Volume work for quads"},
-                        {"name": "Walking Lunges", "sets": 3, "reps": 12, "rest": "60s", "notes": "Unilateral leg work"}
-                    ]
-                },
-                {
-                    "day": "Saturday",
-                    "focus": "Rest Day or Active Recovery",
-                    "exercises": []
-                },
-                {
-                    "day": "Sunday",
-                    "focus": "Rest Day",
-                    "exercises": []
-                }
-            ],
-            "program_notes": f"Fallback {phase} program at {calories} kcal/day. This is a proven Push/Pull/Legs split with appropriate volume for your phase. For {phase} phase: {'focus on progressive overload and volume' if phase == 'bulking' else 'maintain strength while managing fatigue' if phase == 'cutting' else 'balanced training for long-term sustainability'}. REST DAYS ARE CRITICAL for recovery.",
-            "progression_strategy": f"Week 1-3: {'Add 2.5-5kg per session and/or add 1-2 reps' if phase == 'bulking' else 'Maintain current loads, focus on bar speed' if phase == 'cutting' else 'Add 2.5kg every other week'}, Week 4: Deload 20% volume, Week 5: Resume with increased loads"
+            "weekly_schedule": [{"day": "Monday", "focus": "Complete body", "exercises": []}],
+            "program_notes": "Error generating plan. Please try again.",
+            "progression_strategy": "N/A"
         }
-
 
 def adjust_plan_volume(plan: dict, wellness_data: dict = None, nutrition_data: dict = None) -> tuple:
     """
     Adjust sets/reps in an existing plan based on current wellness and nutrition.
-    Does NOT change the exercises themselves, only the volume.
-    
-    Args:
-        plan: Existing weekly plan dictionary
-        wellness_data: Current wellness metrics
-        nutrition_data: Current nutrition status
-        
-    Returns:
-        Tuple of (adjusted_plan, adjustment_reason)
     """
     try:
         import copy
@@ -1105,7 +1053,7 @@ def adjust_plan_volume(plan: dict, wellness_data: dict = None, nutrition_data: d
             elif sleep_score < 65 or stress == 'Moderate':
                 volume_multiplier = 0.9
                 adjustment_reason = "Volume reduced 10% for recovery optimization"
-            elif sleep_score >= 85 and readiness == 'Good' and hrv == 'High':  # Fixed: >= instead of >
+            elif sleep_score >= 85 and readiness == 'Good' and hrv == 'High':
                 volume_multiplier = 1.1
                 adjustment_reason = "Volume increased 10% - excellent recovery status"
         
@@ -1117,15 +1065,6 @@ def adjust_plan_volume(plan: dict, wellness_data: dict = None, nutrition_data: d
                         # Adjust sets (round to nearest integer, min 1)
                         original_sets = exercise.get('sets', 3)
                         exercise['sets'] = max(1, round(original_sets * volume_multiplier))
-                        
-                        # Optionally adjust reps slightly (for high/low volume days)
-                        if volume_multiplier < 0.9:
-                            # If reducing volume significantly, keep reps the same or increase slightly
-                            pass
-                        elif volume_multiplier > 1.05:
-                            # If increasing volume, might reduce reps slightly
-                            original_reps = exercise.get('reps', 10)
-                            exercise['reps'] = max(5, round(original_reps * 0.95))
         
         print(f"📊 Volume adjusted: {volume_multiplier}x - {adjustment_reason}")
         return adjusted_plan, adjustment_reason
@@ -1134,12 +1073,11 @@ def adjust_plan_volume(plan: dict, wellness_data: dict = None, nutrition_data: d
         print(f"❌ Error adjusting volume: {e}")
         return plan, "No adjustments applied (error)"
 
-
 @app.post("/api/profile/save")
 async def save_user_profile(request: UserProfileRequest):
     """Save user's fitness profile (calories, cutting/bulking) to Pinecone."""
     try:
-        from tools.memory_store import save_agent_memory
+        from backend.tools.memory_store import save_agent_memory
         
         profile_text = f"User profile: {request.calories} calories/day, phase: {request.phase}, protein target: {request.protein_target}g. Notes: {request.notes}"
         
@@ -1154,8 +1092,6 @@ async def save_user_profile(request: UserProfileRequest):
                 "notes": request.notes
             }
         )
-        
-        print(f"✅ Saved user profile: {request.calories} cal, {request.phase}")
         
         return {
             "status": "success",
@@ -1183,9 +1119,9 @@ async def get_dashboard_metrics(user_id: str):
     import asyncio
     
     try:
-        from tools.memory_store import get_wellness_memory, get_exercise_memory, get_nutrition_memory
+        from backend.tools.memory_store import get_wellness_memory, get_exercise_memory, get_nutrition_memory
         
-        # Parallelize all Pinecone queries using asyncio.gather
+        # Parallelize all Pinecone queries using asyncio.to_thread
         wellness_task = asyncio.to_thread(get_wellness_memory, query="recent wellness readiness biometrics", top_k=1, user_id=user_id)
         profile_task = asyncio.to_thread(get_user_profile, user_id=user_id)
         exercise_task = asyncio.to_thread(get_exercise_memory, query="recent workout session", top_k=2, user_id=user_id)
@@ -1202,32 +1138,27 @@ async def get_dashboard_metrics(user_id: str):
         
         if has_wellness_data:
             latest = wellness_logs[0]
+            rhr = latest.get("rhr", 65)
+            # Calculate stress
+            stress = 50
+            if rhr <= 55: stress = 25
+            elif rhr <= 65: stress = 45
+            elif rhr <= 75: stress = 65
+            else: stress = 80
+            
             wellness_data = {
                 "sleep_hours": latest.get("sleep_hours", 7.0),
                 "hrv": latest.get("hrv", 50),
-                "rhr": latest.get("rhr", 65),
+                "rhr": rhr,
                 "readiness_score": latest.get("readiness_score", 70),
-                "stress_score": 50  # Will be calculated below
+                "stress_score": stress
             }
-            
-            # Calculate stress score from RHR (inverse relationship: lower RHR = lower stress)
-            rhr = latest.get("rhr", 65)
-            if rhr <= 55:
-                wellness_data["stress_score"] = 25  # Low stress
-            elif rhr <= 65:
-                wellness_data["stress_score"] = 45  # Moderate stress
-            elif rhr <= 75:
-                wellness_data["stress_score"] = 65  # Elevated stress
-            else:
-                wellness_data["stress_score"] = 80  # High stress
-        else:
-            print("⚠️ No wellness logs found for user", user_id)
-
+        
         # 2. Process user profile
         user_data = {
-            "name": "Dr. A. Sharma",
+            "name": "User",
             "status": "Stable",
-            "bmi": 22.4,
+            "bmi": 22.4, # Mock
             "resting_hr": wellness_data["rhr"] if wellness_data else 65,
             "phase": "maintenance",
             "calories": 2000
@@ -1239,103 +1170,220 @@ async def get_dashboard_metrics(user_id: str):
         
         # 3. Process agent logs
         agent_logs = []
-        
-        # Add trainer logs
         if exercise_logs:
-            for log in exercise_logs[:1]:  # Latest only
+            for log in exercise_logs[:1]:
                 issues = log.get("issues", [])
-                if issues:
-                    agent_logs.append({
-                        "type": "trainer",
-                        "message": f"Form issue detected: {', '.join(issues[:2])}",
-                        "severity": "warning"
-                    })
-                else:
-                    agent_logs.append({
-                        "type": "trainer",
-                        "message": f"Training load adjustment in progress ({log.get('reps', 0)} reps logged)",
-                        "severity": "info"
-                    })
+                agent_logs.append({
+                    "type": "trainer",
+                    "message": f"Form issue: {', '.join(issues[:2])}" if issues else f"Log: {log.get('reps', 0)} reps",
+                    "severity": "warning" if issues else "info"
+                })
         
-        # Add nutritionist logs
         if nutrition_logs:
-            for log in nutrition_logs[:1]:
+             for log in nutrition_logs[:1]:
                 agent_logs.append({
                     "type": "nutritionist",
-                    "message": f"Reviewing dietary plan - {log.get('goal', 'General wellness')}",
+                    "message": f"Reviewing diet - {log.get('goal', 'General')}",
                     "severity": "info"
                 })
-        
-        # Add wellness log
+
         if has_wellness_data:
             readiness = wellness_data["readiness_score"]
-            if readiness >= 80:
-                agent_logs.append({
-                    "type": "wellness",
-                    "message": "Recovery status optimal - ready for training",
-                    "severity": "success"
-                })
-            elif readiness >= 60:
-                agent_logs.append({
-                    "type": "wellness",
-                    "message": "Moderate recovery - consider reduced intensity",
-                    "severity": "info"
-                })
-            else:
-                agent_logs.append({
-                    "type": "wellness",
-                    "message": "Low recovery detected - rest recommended",
-                    "severity": "warning"
-                })
-        
-        # Default logs if none available
-        if not agent_logs:
-            agent_logs = [
-                {"type": "trainer", "message": "Training load adjustment in progress", "severity": "info"},
-                {"type": "nutritionist", "message": "Reviewing dietary plan", "severity": "info"},
-                {"type": "wellness", "message": "Monitoring biometric data", "severity": "info"}
-            ]
-        
-        if wellness_data:
-            print(f"📊 Dashboard metrics fetched: sleep={wellness_data['sleep_hours']}h, readiness={wellness_data['readiness_score']}")
-        else:
-            print(f"📊 Dashboard metrics fetched: No wellness data available")
-        
+            agent_logs.append({
+                "type": "wellness",
+                "message": "Recovery optimal" if readiness >= 80 else "Recovery moderate" if readiness >= 60 else "Rest recommended",
+                "severity": "success" if readiness >= 80 else "info" if readiness >= 60 else "warning"
+            })
+            
         return {
             "status": "success",
-            "wellness": wellness_data,  # Will be None if no data
+            "wellness": wellness_data,
             "user": user_data,
             "agent_logs": agent_logs
         }
         
     except Exception as e:
         print(f"❌ Error fetching dashboard metrics: {e}")
-        # Return reasonable defaults on error
         return {
             "status": "error",
             "message": str(e),
-            "wellness": {
-                "sleep_hours": 7.0,
-                "stress_score": 50,
-                "readiness_score": 70,
-                "hrv": 50,
-                "rhr": 65
-            },
-            "user": {
-                "name": "Dr. A. Sharma",
-                "status": "Stable",
-                "bmi": 22.4,
-                "resting_hr": 65,
-                "phase": "maintenance",
-                "calories": 2000
-            },
-            "agent_logs": [
-                {"type": "trainer", "message": "Training load adjustment in progress", "severity": "info"},
-                {"type": "nutritionist", "message": "Reviewing dietary plan", "severity": "info"},
-                {"type": "wellness", "message": "Monitoring biometric data", "severity": "info"}
-            ]
+            "wellness": {"sleep_hours": 7.0, "stress_score": 50, "readiness_score": 70, "hrv": 50, "rhr": 65},
+            "user": {"name": "User", "status": "Stable", "bmi": 22.4, "resting_hr": 65, "phase": "maintenance", "calories": 2000},
+            "agent_logs": []
         }
 
+@app.post("/api/wellness/save")
+async def save_wellness_data(request: WellnessRequest):
+    """
+    Save biometric data (sleep, HRV, RHR) directly to Pinecone without full AI analysis.
+    Useful for manual data entry/simulation.
+    """
+    try:
+        from backend.tools.memory_store import save_agent_memory
+        import time
+        
+        print(f"💾 Saving wellness data: Sleep={request.sleep_hours}h, HRV={request.hrv}, RHR={request.rhr}")
+        
+        # Simple readiness calculation (mock logic corresponding to frontend)
+        readiness_score = 70
+        if request.sleep_hours > 7.5: readiness_score += 10
+        if request.sleep_hours < 6: readiness_score -= 15
+        if request.hrv > 65: readiness_score += 10
+        if request.hrv < 40: readiness_score -= 15
+        if request.rhr < 60: readiness_score += 10
+        if request.rhr > 75: readiness_score -= 10
+        readiness_score = min(100, max(0, readiness_score))
+        
+        text_content = f"""
+        Biometric Log for {request.user_id} on {request.date or time.strftime('%Y-%m-%d')}:
+        - Sleep: {request.sleep_hours} hours
+        - HRV: {request.hrv} ms
+        - RHR: {request.rhr} bpm
+        - Estimated Readiness: {readiness_score}/100
+        """
+        
+        log_id = save_agent_memory(
+            agent_type="wellness",
+            content=text_content,
+            metadata={
+                "type": "wellness",
+                "user_id": request.user_id,
+                "sleep_hours": request.sleep_hours,
+                "hrv": request.hrv,
+                "rhr": request.rhr,
+                "readiness_score": readiness_score,
+                "executive_summary": "Manual entry"
+            },
+            user_id=request.user_id
+        )
+        
+        print(f"✅ Wellness data saved: {log_id}")
+        
+        return {
+            "status": "success",
+            "log_id": log_id,
+            "readiness_score": readiness_score
+        }
+        
+    except Exception as e:
+        print(f"❌ Wellness save error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/wellness/upload")
+async def upload_wellness_data(request: dict):
+    """
+    Handle multi-day wearable data upload (JSON list).
+    Analyzes trend and returns AI insights.
+    Saves the *latest* record to Pinecone as current status.
+    """
+    try:
+        from backend.tools.memory_store import save_agent_memory
+        import time
+
+        data = request.get('data', [])
+        user_id = request.get('user_id')
+        print(f"DEBUG: Upload endpoint hit for {user_id}")
+        
+        if not data or not isinstance(data, list):
+            raise HTTPException(status_code=400, detail="Invalid data format. Expected list of daily records.")
+
+        print(f"📂 Received {len(data)} days of wearable data for {user_id}")
+        
+        # 1. Sort by date just in case
+        # Assuming date format YYYY-MM-DD
+        sorted_data = sorted(data, key=lambda x: x.get('date', ''))
+        
+        # 2. Get the latest record for Pinecone save
+        latest_record = sorted_data[-1]
+        
+        # 3. Analyze Trend with Gemini
+        # client = GoogleGenerativeAIEmbeddings(...) # RMOVED unused crashing line
+        import google.generativeai as genai
+        
+        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        
+        model = genai.GenerativeModel('gemini-pro')
+
+        prompt = f"""
+        Role: Expert Sports Scientist & Recovery Specialist.
+        
+        Task: Analyze the following 3-day biometric trend for a user.
+        Identify patterns in Sleep, HRV, and Resting Heart Rate.
+        Determine if the user is trending towards Recovery, Straining, or Overtraining.
+        
+        Data (Chronological):
+        {json.dumps(sorted_data, indent=2)}
+        
+        Output JSON:
+        {{
+            "executive_summary": "One sentence summary of the trend (e.g., 'Recovery is improving despite lower sleep due to increased HRV.').",
+            "trend_analysis": "Detailed analysis of the trajectory.",
+            "training_protocol": "Recommended training intensity (High/Moderate/Low/Rest) based on the TREND.",
+            "micro_intervention": "One specific action to optimize the current trajectory."
+        }}
+        """
+
+        response = model.generate_content(prompt)
+        
+        text_response = response.text
+        
+        analysis = extract_json(text_response)
+        if not analysis:
+            # Fallback
+            analysis = {
+                "executive_summary": "Data uploaded successfully.",
+                "trend_analysis": "Unable to generate detailed trend analysis.",
+                "training_protocol": "Moderate Intensity",
+                "micro_intervention": "Monitor sleep tonight."
+            }
+
+        # 4. Save Latest Record to Pinecone (as current status)
+        # Mocking a Readiness Score for the latest record
+        sleep = latest_record.get('sleep_hours', 7)
+        hrv = latest_record.get('hrv', 50)
+        rhr = latest_record.get('rhr', 60)
+        
+        readiness_score = 70
+        if sleep > 7.5: readiness_score += 10
+        if hrv > 60: readiness_score += 10
+        if rhr < 60: readiness_score += 10
+        readiness_score = min(100, readiness_score)
+
+        text_content = f"""
+        Biometric Log (Uploaded) for {user_id} on {latest_record.get('date')}:
+        - Sleep: {sleep} hours
+        - HRV: {hrv} ms
+        - RHR: {rhr} bpm
+        - Estimated Readiness: {readiness_score}/100
+        - Trend Analysis: {analysis.get('executive_summary')}
+        """
+        
+        log_id = save_agent_memory(
+            agent_type="wellness",
+            content=text_content,
+            metadata={
+                "type": "wellness",
+                "user_id": user_id,
+                "sleep_hours": sleep,
+                "hrv": hrv,
+                "rhr": rhr,
+                "readiness_score": readiness_score,
+                "executive_summary": analysis.get('executive_summary')
+            },
+            user_id=user_id
+        )
+        print(f"DEBUG: Check 10 - Memory Saved")
+
+        return {
+            "status": "success",
+            "analysis": analysis,
+            "latest_record": latest_record,
+            "log_id": log_id
+        }
+
+    except Exception as e:
+        print(f"❌ Upload error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/wellness/analyze")
 async def analyze_wellness_data(request: WellnessRequest):
@@ -1344,7 +1392,8 @@ async def analyze_wellness_data(request: WellnessRequest):
     Saves analysis to Pinecone for cross-agent memory sharing.
     """
     try:
-        from tools.memory_store import save_agent_memory
+        from backend.agents.wellness.brain import analyze_wellness
+        from backend.tools.memory_store import save_agent_memory
         import time
         
         # Prepare data dict for analysis
@@ -1381,7 +1430,8 @@ async def analyze_wellness_data(request: WellnessRequest):
                 "rhr": request.rhr,
                 "readiness_score": analysis.get('readiness_score', 0),
                 "executive_summary": analysis.get('executive_summary', '')[:500]
-            }
+            },
+            user_id=request.user_id  # Pass user_id for correct namespace
         )
         
         print(f"✅ Wellness analysis saved: {log_id}")
@@ -1395,6 +1445,61 @@ async def analyze_wellness_data(request: WellnessRequest):
     except Exception as e:
         print(f"❌ Wellness analysis error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/wellness/data")
+async def get_wellness_data_endpoint(user_id: str = None):
+    """
+    Fetch the latest wellness data from Pinecone for a user.
+    Used to persist wellness slider values across component navigation.
+    """
+    try:
+        from backend.tools.memory_store import get_wellness_memory
+        
+        print(f"📊 Fetching wellness data for user: {user_id}")
+        
+        # Use the wellness memory retrieval function
+        wellness_logs = get_wellness_memory(
+            query="recent wellness biometric data sleep hrv rhr",
+            top_k=1,
+            user_id=user_id or "user_123"
+        )
+        
+        # Default values if no data found
+        default_data = {
+            "sleep_hours": 7.0,
+            "hrv": 50,
+            "rhr": 65,
+            "readiness_score": 70,
+            "executive_summary": "",
+            "found": False
+        }
+        
+        if wellness_logs and len(wellness_logs) > 0:
+            latest = wellness_logs[0]
+            print(f"✅ Found wellness data: Sleep={latest.get('sleep_hours')}h, HRV={latest.get('hrv')}, RHR={latest.get('rhr')}")
+            return {
+                "status": "success",
+                "data": {
+                    "sleep_hours": latest.get('sleep_hours', 7.0),
+                    "hrv": latest.get('hrv', 50),
+                    "rhr": latest.get('rhr', 65),
+                    "readiness_score": latest.get('readiness_score', 70),
+                    "executive_summary": latest.get('executive_summary', ''),
+                    "found": True
+                }
+            }
+        else:
+            print(f"⚠️ No wellness data found for user, returning defaults")
+            return {
+                "status": "success",
+                "data": default_data
+            }
+            
+    except Exception as e:
+        print(f"❌ Error fetching wellness data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/trainer/weekly-plan")
 async def get_weekly_training_plan(request: WeeklyPlanRequest):
@@ -1411,7 +1516,7 @@ async def get_weekly_training_plan(request: WeeklyPlanRequest):
     4. If force_regenerate is True, skip cache and generate new plan
     """
     try:
-        from tools.memory_store import get_training_plan_memory, save_training_plan
+        from backend.tools.memory_store import get_training_plan_memory, save_training_plan
         import time
         from datetime import datetime, timedelta
         
@@ -1892,7 +1997,7 @@ async def scan_food(file: UploadFile = File(...)):
         
         # [INTEGRATION] Save scan result to agent memory so Nutritionist can recall it
         try:
-            from tools.memory_store import save_agent_memory
+            from backend.tools.memory_store import save_agent_memory
             
             # Create a summary string for the memory
             product_name = analysis.get('productName', 'Unknown Food')
@@ -1915,18 +2020,6 @@ async def scan_food(file: UploadFile = File(...)):
             print(f"⚠️ Could not save scan to memory: {mem_err}")
 
         return analysis
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/timeline")
-async def get_timeline():
-    """
-    Fetch recent decisions/actions from all agents for the Timeline View.
-    """
-    try:
-        from tools.memory_store import get_recent_logs
-        logs = get_recent_logs(limit=20)
-        return {"logs": logs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

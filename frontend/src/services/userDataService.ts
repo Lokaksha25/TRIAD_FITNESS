@@ -3,6 +3,8 @@
 
 export interface OnboardingData {
     user_id: string;
+    email?: string;
+    name?: string;
     gender: 'male' | 'female';
     age: number;
     weight: number;  // kg

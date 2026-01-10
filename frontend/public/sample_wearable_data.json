@@ -1,0 +1,23 @@
+[
+    {
+        "date": "2026-01-08",
+        "sleep_hours": 6.5,
+        "hrv": 45,
+        "rhr": 68,
+        "activity_calories": 450
+    },
+    {
+        "date": "2026-01-09",
+        "sleep_hours": 7.2,
+        "hrv": 52,
+        "rhr": 64,
+        "activity_calories": 500
+    },
+    {
+        "date": "2026-01-10",
+        "sleep_hours": 8.0,
+        "hrv": 65,
+        "rhr": 58,
+        "activity_calories": 300
+    }
+]

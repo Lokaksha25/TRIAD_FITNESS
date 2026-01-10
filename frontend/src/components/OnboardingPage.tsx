@@ -139,6 +139,8 @@ const OnboardingPage: React.FC = () => {
             state: {
                 onboardingData: {
                     user_id: currentUser.uid,
+                    email: currentUser.email || '',
+                    name: currentUser.displayName || 'User',
                     gender: formData.gender,
                     age: parseInt(formData.age),
                     weight: parseFloat(formData.weight),

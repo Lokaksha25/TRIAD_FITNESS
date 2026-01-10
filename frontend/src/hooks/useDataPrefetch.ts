@@ -37,18 +37,19 @@ export const useDataPrefetch = (onboardingData?: OnboardingData): PrefetchState 
                     setState(prev => ({ ...prev, progress: 40 }));
                 }
 
-                // Step 2: Try to save to backend (fire and forget - don't block on errors)
+                // Step 2: Save to backend (BLOCKING - fail if this fails)
                 if (onboardingData) {
-                    try {
-                        await fetch('/api/user/onboarding', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(onboardingData),
-                        });
-                        console.log('✅ Onboarding data sent to backend');
-                    } catch (err) {
-                        console.warn('⚠️ Backend save failed (data saved locally):', err);
+                    const response = await fetch('/api/user/onboarding', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(onboardingData),
+                    });
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`Backend save failed: ${response.status} ${errorText}`);
                     }
+                    console.log('✅ Onboarding data saved to backend');
                 }
 
                 setState(prev => ({ ...prev, progress: 70 }));
@@ -75,7 +76,8 @@ export const useDataPrefetch = (onboardingData?: OnboardingData): PrefetchState 
 
             } catch (err: any) {
                 console.error('Prefetch error:', err);
-                setState({ isReady: true, error: err.message || 'Prefetch failed', progress: 100 });
+                // isReady: false ensures we don't navigate to dashboard on critical error
+                setState({ isReady: false, error: err.message || 'Prefetch failed', progress: 100 });
             }
         };
 

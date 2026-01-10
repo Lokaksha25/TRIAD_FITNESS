@@ -43,7 +43,7 @@ def analyze_wellness(data: dict) -> dict:
         interventions, and recommendations.
     """
     # Use the stable model
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    model = genai.GenerativeModel('gemini-2.0-flash-exp')
     
     # Extract data with defaults
     sleep_hours = data.get('sleep_hours', 7)
@@ -110,7 +110,7 @@ def generate_wellness_chat_response(user_message: str, wellness_data: dict = Non
     """
     try:
         from groq import Groq
-        from tools.memory_store import get_wellness_memory, format_wellness_context
+        from backend.tools.memory_store import get_wellness_memory, format_wellness_context
         
         # Fetch wellness context from Pinecone
         wellness_memories = get_wellness_memory(query=user_message, top_k=3, user_id=user_id)

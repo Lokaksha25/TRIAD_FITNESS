@@ -297,31 +297,48 @@ def get_wellness_memory(query: str = "recent wellness biometric analysis", top_k
         top_k: Number of results to return
         
     Returns:
-        List of wellness memory dictionaries with metadata
+        List of wellness memory dictionaries with metadata, sorted by most recent first
     """
     try:
         index = _get_index()
         embeddings = _get_embeddings()
         
+        namespace = get_namespace_id(user_id)
+        print(f"🔍 Querying wellness data for user: {user_id}")
+        print(f"   Namespace (hashed): {namespace[:16]}...")
+        
         query_vector = embeddings.embed_query(query)
         
-        # Query Pinecone
+        # Query Pinecone - fetch more to ensure we get all wellness logs
         results = index.query(
             vector=query_vector,
-            top_k=top_k * 2,
+            top_k=20,  # Fetch more to find all wellness entries
             include_metadata=True,
-            namespace=get_namespace_id(user_id)  # Hashed for security
+            namespace=namespace
         )
+        
+        total_matches = len(results.get('matches', []))
+        print(f"   Total matches from Pinecone: {total_matches}")
         
         # Filter for wellness logs
         wellness_logs = []
         for match in results.get('matches', []):
             meta = match.get('metadata', {})
+            agent_type = meta.get('agent_type', 'none')
+            data_type = meta.get('type', 'none')
+            
             # Check for wellness type
-            if meta.get('agent_type') == 'wellness' or meta.get('type') == 'wellness':
+            if agent_type == 'wellness' or data_type == 'wellness':
+                # Extract timestamp from ID (format: wellness_{timestamp})
+                try:
+                    timestamp = int(match['id'].split('_')[1])
+                except:
+                    timestamp = 0
+                    
                 wellness_logs.append({
                     "id": match['id'],
                     "score": match['score'],
+                    "timestamp": timestamp,
                     "text": meta.get('text', ''),
                     "executive_summary": meta.get('executive_summary', ''),
                     "readiness_score": meta.get('readiness_score', 0),
@@ -330,10 +347,18 @@ def get_wellness_memory(query: str = "recent wellness biometric analysis", top_k
                     "rhr": meta.get('rhr', 0),
                     "date": meta.get('date', '')
                 })
-                
-                if len(wellness_logs) >= top_k:
-                    break
         
+        # Sort by timestamp (most recent first)
+        wellness_logs.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+        
+        # Return only top_k results
+        wellness_logs = wellness_logs[:top_k]
+        
+        if wellness_logs:
+            print(f"   Most recent wellness log: {wellness_logs[0]['id']}")
+            print(f"   Sleep={wellness_logs[0]['sleep_hours']}h, HRV={wellness_logs[0]['hrv']}, RHR={wellness_logs[0]['rhr']}")
+        
+        print(f"   Wellness logs found after filtering: {len(wellness_logs)}")
         return wellness_logs
         
     except Exception as e:

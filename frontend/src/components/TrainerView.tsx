@@ -425,7 +425,14 @@ const TrainerView: React.FC = () => {
   // General Error State
   const [error, setError] = useState<string | null>(null);
 
-  const stopSession = () => {
+  const stopSession = async () => {
+    try {
+      // Call backend to signal the CV tools to stop
+      await fetch('/api/trainer/stop', { method: 'POST' });
+      console.log('🛑 Stop signal sent to backend');
+    } catch (err) {
+      console.error('Failed to stop session:', err);
+    }
     setSessionActive(false);
     setLoading(false);
   };

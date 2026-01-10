@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Target, TrendingDown, Play, CheckCircle, AlertTriangle, Utensils, IndianRupee, Activity, Bed, HeartPulse, Leaf, Drumstick, Flame, Dumbbell, Sparkles, ChevronDown, ChevronUp, Settings, Sun, Coffee, Moon, Youtube, ShoppingCart, BookOpen, ExternalLink } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { useAuth } from '../context/AuthContext';
 import CustomSelect from './ui/CustomSelect';
 
@@ -456,7 +455,7 @@ const NutritionistView: React.FC = () => {
   const parsedPlan = mealResult ? parseMealPlan(mealResult) : null;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full pb-12">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-screen pb-12">
       {/* Left Column: User Profile */}
       <div className="lg:col-span-1 space-y-6">
 
