@@ -127,22 +127,17 @@ const OnboardingPage: React.FC = () => {
         setError(null);
     };
 
-    const handleSubmit = async () => {
+    const handleSubmit = () => {
         if (!currentUser) {
             setError('User not authenticated');
             return;
         }
 
-        setIsLoading(true);
-        setError(null);
-
-        try {
-            const response = await fetch('/api/user/onboarding', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
+        // Navigate immediately to loading screen, passing onboarding data
+        // The loading screen will handle the API call in the background
+        navigate('/loading', {
+            state: {
+                onboardingData: {
                     user_id: currentUser.uid,
                     gender: formData.gender,
                     age: parseInt(formData.age),
@@ -151,21 +146,9 @@ const OnboardingPage: React.FC = () => {
                     goal: formData.goal,
                     activity_level: formData.activityLevel,
                     calculated_calories: calculatedCalories
-                }),
-            });
-
-            if (!response.ok) {
-                const errText = await response.text();
-                throw new Error(errText || 'Failed to save onboarding data');
+                }
             }
-
-            navigate('/dashboard');
-        } catch (err: any) {
-            console.error('Onboarding submission error:', err);
-            setError(err.message || 'Failed to save your data. Please try again.');
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (

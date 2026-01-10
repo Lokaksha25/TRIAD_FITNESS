@@ -12,6 +12,7 @@ import ProfileSettings from './components/ProfileSettings';
 import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage';
 import OnboardingPage from './components/OnboardingPage';
+import LoadingTransition from './components/LoadingTransition';
 import { ChatProvider } from './context/ChatContext';
 import { AuthProvider } from './context/AuthContext';
 
@@ -24,6 +25,7 @@ const App: React.FC = () => {
             <Route path="/" element={<LandingPage />} />
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/loading" element={<LoadingTransition />} />
             <Route
               path="/*"
               element={

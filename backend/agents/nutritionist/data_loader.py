@@ -47,11 +47,13 @@ class FoodDataLoader:
                 flat_meal['fats'] = nutrition.get('fat', 0)
                 flat_meal['fiber'] = nutrition.get('fiber', 0)
                 
-                # Extract recipe steps as string
-                flat_meal['recipe'] = ' | '.join(meal.get('recipe', []))
+                # Store recipe as JSON array string (preserve steps)
+                recipe_steps = meal.get('recipe', [])
+                flat_meal['recipe'] = json.dumps(recipe_steps)  # Store as JSON string
                 
-                # Extract ingredients as string for context
+                # Store ingredients with blinkit links as JSON string
                 ingredients = meal.get('ingredients', [])
+                flat_meal['ingredients'] = json.dumps(ingredients)  # Full ingredient data with blinkit
                 flat_meal['ingredients_str'] = ', '.join([ing.get('name', '') for ing in ingredients])
                 
                 flat_data.append(flat_meal)

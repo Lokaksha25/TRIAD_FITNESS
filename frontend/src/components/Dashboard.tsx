@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Activity, Utensils, Pill, FileText, Zap, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { getOnboardingData, computeUserMetrics } from '../services/userDataService';
 
 interface WellnessData {
   sleep_hours: number;
@@ -17,6 +18,10 @@ interface UserData {
   resting_hr: number;
   phase: string;
   calories: number;
+  weight?: number;
+  height?: number;
+  age?: number;
+  goal?: string;
 }
 
 interface AgentLog {
@@ -25,18 +30,12 @@ interface AgentLog {
   severity: 'info' | 'warning' | 'success';
 }
 
-interface DashboardMetrics {
-  status: string;
-  wellness: WellnessData;
-  user: UserData;
-  agent_logs: AgentLog[];
-}
-
 const Dashboard: React.FC = () => {
   const { currentUser } = useAuth();
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [userData, setUserData] = useState<UserData | null>(null);
+  const [wellness, setWellness] = useState<WellnessData | null>(null);
+  const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Get current date and time
   const now = new Date();
@@ -51,78 +50,78 @@ const Dashboard: React.FC = () => {
     hour12: true,
   });
 
-  // Cache configuration
-  const CACHE_KEY = 'dashboard_metrics_cache';
-  const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-  // Fetch dashboard metrics with caching
+  // Load user data from onboarding cache
   useEffect(() => {
-    const fetchMetrics = async () => {
+    const loadUserData = () => {
       if (!currentUser) return;
 
-      // Check cache first
-      try {
-        const cached = localStorage.getItem(CACHE_KEY);
-        if (cached) {
-          const { data, timestamp, userId } = JSON.parse(cached);
-          const isValid = Date.now() - timestamp < CACHE_TTL_MS;
-          const isSameUser = userId === currentUser.uid;
+      // Get onboarding data from local storage
+      const onboardingData = getOnboardingData();
 
-          if (isValid && isSameUser) {
-            console.log('📦 Using cached dashboard data');
-            setMetrics(data);
-            setLoading(false);
-            return;
-          }
-        }
-      } catch (e) {
-        console.error('Cache read error:', e);
-      }
+      if (onboardingData) {
+        console.log('📦 Loading user data from onboarding cache');
+        const metrics = computeUserMetrics(onboardingData);
 
-      // Fetch fresh data
-      try {
-        setLoading(true);
-        const response = await fetch(`/api/dashboard/metrics?user_id=${currentUser.uid}`);
-        const data = await response.json();
-        setMetrics(data);
-        setError(null);
-
-        // Save to cache
-        localStorage.setItem(CACHE_KEY, JSON.stringify({
-          data,
-          timestamp: Date.now(),
-          userId: currentUser.uid
-        }));
-        console.log('✅ Dashboard data cached');
-      } catch (err) {
-        console.error('Error fetching dashboard metrics:', err);
-        setError('Failed to load dashboard data');
-        // Set default values on error
-        setMetrics({
-          status: 'error',
-          wellness: {
-            sleep_hours: 7.0,
-            stress_score: 50,
-            readiness_score: 70,
-            hrv: 50,
-            rhr: 65
-          },
-          user: {
-            name: 'Dr. A. Sharma',
-            status: 'Stable',
-            bmi: 22.4,
-            resting_hr: 65,
-            phase: 'maintenance',
-            calories: 2000
-          },
-          agent_logs: []
+        setUserData({
+          name: currentUser.displayName || currentUser.email?.split('@')[0] || 'User',
+          status: metrics.status,
+          bmi: metrics.bmi,
+          resting_hr: 65, // Default value
+          phase: metrics.phase,
+          calories: metrics.calories,
+          weight: onboardingData.weight,
+          height: onboardingData.height,
+          age: onboardingData.age,
+          goal: onboardingData.goal,
         });
-      } finally {
-        setLoading(false);
+
+        // Set default wellness data (can be enhanced with wearable data later)
+        setWellness({
+          sleep_hours: 7.5,
+          stress_score: 35,
+          readiness_score: 78,
+          hrv: 55,
+          rhr: 65,
+        });
+
+        // Set contextual agent logs based on goal
+        const goal = onboardingData.goal;
+        setAgentLogs([
+          {
+            type: 'trainer',
+            message: goal === 'lose' ? 'Cardio-focused training plan active' :
+              goal === 'gain' ? 'Strength training plan active' :
+                'Balanced training plan active',
+            severity: 'info'
+          },
+          {
+            type: 'nutritionist',
+            message: `Daily target: ${metrics.calories} kcal, ${metrics.proteinTarget}g protein`,
+            severity: 'info'
+          },
+          {
+            type: 'wellness',
+            message: 'Monitoring biometric data',
+            severity: 'success'
+          },
+        ]);
+      } else {
+        // No onboarding data found - set defaults
+        console.log('⚠️ No onboarding data found, using defaults');
+        setUserData({
+          name: currentUser.displayName || currentUser.email?.split('@')[0] || 'User',
+          status: 'New User',
+          bmi: 22.0,
+          resting_hr: 65,
+          phase: 'Getting Started',
+          calories: 2000,
+        });
       }
+
+      setLoading(false);
     };
 
-    fetchMetrics();
+    loadUserData();
   }, [currentUser]);
 
   // Get icon and colors for agent logs
@@ -157,12 +156,6 @@ const Dashboard: React.FC = () => {
     if (score >= 60) return 'Moderate activity';
     return 'Rest recommended';
   };
-
-  // Extract data - use null if wellness data not available
-  const hasWellnessData = metrics?.wellness && metrics.status !== 'error';
-  const wellness = hasWellnessData ? metrics.wellness : null;
-  const user = metrics?.user || { name: 'Dr. A. Sharma', status: 'Stable', bmi: 22.4, resting_hr: 65, phase: 'maintenance', calories: 2000 };
-  const agentLogs = metrics?.agent_logs || [];
 
   const stressInfo = wellness ? getStressLabel(wellness.stress_score) : null;
   const sleepStatus = wellness ? getSleepStatus(wellness.sleep_hours) : null;
@@ -207,7 +200,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div>
               <h2 className="text-sm text-muted-foreground font-medium">Patient Summary</h2>
-              <h1 className="text-lg font-bold text-foreground">{currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User'}</h1>
+              <h1 className="text-lg font-bold text-foreground">{userData?.name || 'User'}</h1>
             </div>
           </div>
 
@@ -215,17 +208,17 @@ const Dashboard: React.FC = () => {
           <div className="flex items-center gap-6 text-sm">
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Status:</span>
-              <span className="font-semibold text-foreground">{user.status}</span>
+              <span className="font-semibold text-foreground">{userData?.status || 'Stable'}</span>
             </div>
             <div className="hidden md:block w-px h-4 bg-border"></div>
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">BMI:</span>
-              <span className="font-semibold text-foreground">{user.bmi}</span>
+              <span className="font-semibold text-foreground">{userData?.bmi || 22.0}</span>
             </div>
             <div className="hidden md:block w-px h-4 bg-border"></div>
             <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Resting HR:</span>
-              <span className="font-semibold text-foreground">{wellness?.rhr || user.resting_hr} bpm</span>
+              <span className="text-muted-foreground">Phase:</span>
+              <span className="font-semibold text-foreground">{userData?.phase || 'Maintenance'}</span>
             </div>
           </div>
 
@@ -236,6 +229,34 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Quick Stats Row */}
+      {userData && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Daily Calories</p>
+            <p className="text-2xl font-bold text-foreground">{userData.calories} <span className="text-sm font-normal text-muted-foreground">kcal</span></p>
+          </div>
+          {userData.weight && (
+            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Weight</p>
+              <p className="text-2xl font-bold text-foreground">{userData.weight} <span className="text-sm font-normal text-muted-foreground">kg</span></p>
+            </div>
+          )}
+          {userData.height && (
+            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Height</p>
+              <p className="text-2xl font-bold text-foreground">{userData.height} <span className="text-sm font-normal text-muted-foreground">cm</span></p>
+            </div>
+          )}
+          {userData.age && (
+            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Age</p>
+              <p className="text-2xl font-bold text-foreground">{userData.age} <span className="text-sm font-normal text-muted-foreground">years</span></p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Core Health Metrics */}
       <div>
@@ -282,7 +303,7 @@ const Dashboard: React.FC = () => {
             ) : (
               <div className="flex flex-col items-center justify-center h-28 text-muted-foreground">
                 <Activity className="w-8 h-8 mb-2 opacity-30" />
-                <span className="text-sm font-medium">Insufficient data</span>
+                <span className="text-sm font-medium">Connect wearable</span>
               </div>
             )}
           </div>
@@ -293,7 +314,7 @@ const Dashboard: React.FC = () => {
 
             {wellness && stressInfo ? (
               <>
-                {/* Bar Chart Visualization - dynamic based on stress score */}
+                {/* Bar Chart Visualization */}
                 <div className="h-16 mb-4 flex items-end justify-between gap-1">
                   {Array.from({ length: 12 }, (_, i) => {
                     const baseHeight = 30 + (wellness.stress_score / 100) * 50;
@@ -316,7 +337,7 @@ const Dashboard: React.FC = () => {
             ) : (
               <div className="flex flex-col items-center justify-center h-28 text-muted-foreground">
                 <Activity className="w-8 h-8 mb-2 opacity-30" />
-                <span className="text-sm font-medium">Insufficient data</span>
+                <span className="text-sm font-medium">Connect wearable</span>
               </div>
             )}
           </div>
@@ -375,7 +396,7 @@ const Dashboard: React.FC = () => {
             ) : (
               <div className="flex flex-col items-center justify-center h-28 text-muted-foreground">
                 <Activity className="w-8 h-8 mb-2 opacity-30" />
-                <span className="text-sm font-medium">Insufficient data</span>
+                <span className="text-sm font-medium">Connect wearable</span>
               </div>
             )}
           </div>
@@ -401,7 +422,6 @@ const Dashboard: React.FC = () => {
                 );
               })
             ) : (
-              // Fallback static logs if none from API
               <>
                 <div className="flex items-center gap-3 py-2">
                   <div className="h-8 w-8 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
@@ -426,13 +446,6 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {/* Error message if any */}
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400">
-          {error} - Displaying cached data
-        </div>
-      )}
     </div>
   );
 };

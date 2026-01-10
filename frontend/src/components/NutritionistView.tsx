@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Target, TrendingDown, Play, CheckCircle, AlertTriangle, Utensils, IndianRupee, Activity, Bed, HeartPulse, Leaf, Drumstick, Flame, Dumbbell, Sparkles, ChevronDown, ChevronUp, Settings, Sun, Coffee, Moon } from 'lucide-react';
+import { Target, TrendingDown, Play, CheckCircle, AlertTriangle, Utensils, IndianRupee, Activity, Bed, HeartPulse, Leaf, Drumstick, Flame, Dumbbell, Sparkles, ChevronDown, ChevronUp, Settings, Sun, Coffee, Moon, Youtube, ShoppingCart, BookOpen, ExternalLink } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { useAuth } from '../context/AuthContext';
 import CustomSelect from './ui/CustomSelect';
@@ -10,6 +10,13 @@ interface MealItem {
   price: number;
   description: string;
   type: 'main' | 'accompaniment';
+}
+
+interface Ingredient {
+  name: string;
+  qty: string;
+  cost_inr: number;
+  blinkit: string;
 }
 
 interface SingleMeal {
@@ -23,6 +30,17 @@ interface SingleMeal {
     fat: number;
     calories: number;
   };
+  recipe: string[];           // Recipe steps
+  youtubeLink: string;        // YouTube recipe URL
+  ingredients: Ingredient[];  // Ingredients with Blinkit links
+}
+
+interface ProteinBooster {
+  name: string;
+  protein: number;
+  price: number;
+  blinkit: string;
+  description: string;
 }
 
 interface ParsedMealPlan {
@@ -31,6 +49,7 @@ interface ParsedMealPlan {
     breakfast: SingleMeal | null;
     lunch: SingleMeal | null;
     dinner: SingleMeal | null;
+    snacks: SingleMeal | null;
   };
   totalMacros: {
     protein: number;
@@ -38,8 +57,10 @@ interface ParsedMealPlan {
     fat: number;
     calories: number;
   };
+  proteinTarget: number;
   totalDailyCost: number;
   whyItWorks: string;
+  proteinBoosters: ProteinBooster[];
 }
 
 // Parser function to extract structured data from meal plan text
@@ -61,7 +82,10 @@ const parseMealPlan = (text: string): ParsedMealPlan | null => {
           carbs: meal.nutrients?.carbs || 0,
           fat: meal.nutrients?.fat || 0,
           calories: meal.nutrients?.calories || 0
-        }
+        },
+        recipe: meal.recipe || [],
+        youtubeLink: meal.youtubeLink || '',
+        ingredients: meal.ingredients || []
       };
     };
 
@@ -70,7 +94,8 @@ const parseMealPlan = (text: string): ParsedMealPlan | null => {
       meals: {
         breakfast: parseMeal(data.meals?.breakfast),
         lunch: parseMeal(data.meals?.lunch),
-        dinner: parseMeal(data.meals?.dinner)
+        dinner: parseMeal(data.meals?.dinner),
+        snacks: parseMeal(data.meals?.snacks)
       },
       totalMacros: {
         protein: data.totalMacros?.protein || 0,
@@ -78,8 +103,10 @@ const parseMealPlan = (text: string): ParsedMealPlan | null => {
         fat: data.totalMacros?.fat || 0,
         calories: data.totalMacros?.calories || 0
       },
+      proteinTarget: data.proteinTarget || 100,
       totalDailyCost: data.totalDailyCost || 0,
-      whyItWorks: data.whyItWorks || "Balanced daily nutrition."
+      whyItWorks: data.whyItWorks || "Balanced daily nutrition.",
+      proteinBoosters: data.proteinBoosters || []
     };
   } catch (e) {
     console.log("JSON parse failed, trying fallback regex:", e);
@@ -167,7 +194,7 @@ const NutrientPill: React.FC<{ label: string; value: number; unit: string; break
 // Collapsible Meal Section Component
 const CollapsibleMealSection: React.FC<{
   meal: SingleMeal;
-  mealType: 'breakfast' | 'lunch' | 'dinner';
+  mealType: 'breakfast' | 'lunch' | 'dinner' | 'snacks';
   dietType: string;
   budget: number;
   defaultOpen?: boolean;
@@ -177,7 +204,8 @@ const CollapsibleMealSection: React.FC<{
   const mealConfig = {
     breakfast: { icon: Coffee, label: 'Breakfast', gradient: 'from-amber-500/20 to-orange-500/20', border: 'border-amber-700', iconColor: 'text-amber-400', bg: 'bg-amber-950/30' },
     lunch: { icon: Sun, label: 'Lunch', gradient: 'from-blue-500/20 to-cyan-500/20', border: 'border-blue-700', iconColor: 'text-blue-400', bg: 'bg-blue-950/30' },
-    dinner: { icon: Moon, label: 'Dinner', gradient: 'from-purple-500/20 to-pink-500/20', border: 'border-purple-700', iconColor: 'text-purple-400', bg: 'bg-purple-950/30' }
+    dinner: { icon: Moon, label: 'Dinner', gradient: 'from-purple-500/20 to-pink-500/20', border: 'border-purple-700', iconColor: 'text-purple-400', bg: 'bg-purple-950/30' },
+    snacks: { icon: Sparkles, label: 'Snacks', gradient: 'from-emerald-500/20 to-teal-500/20', border: 'border-emerald-700', iconColor: 'text-emerald-400', bg: 'bg-emerald-950/30' }
   };
 
   const config = mealConfig[mealType];
@@ -243,6 +271,54 @@ const CollapsibleMealSection: React.FC<{
               ))}
             </div>
           )}
+
+          {/* Recipe Summary Section */}
+          {meal.recipe && meal.recipe.length > 0 && (
+            <div className="bg-gradient-to-r from-violet-950/30 to-purple-950/30 rounded-lg p-4 border border-violet-800/50">
+              <div className="flex items-center gap-2 mb-3">
+                <BookOpen size={16} className="text-violet-400" />
+                <h5 className="text-sm font-bold text-violet-300">Quick Recipe</h5>
+              </div>
+              <ol className="space-y-1.5">
+                {meal.recipe.slice(0, 4).map((step, idx) => (
+                  <li key={idx} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <span className="bg-violet-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      {idx + 1}
+                    </span>
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {/* Action Buttons: YouTube & Blinkit */}
+          <div className="flex flex-wrap gap-3 pt-2">
+            {meal.youtubeLink && (
+              <a
+                href={meal.youtubeLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors shadow-md"
+              >
+                <Youtube size={18} />
+                <span>Watch Recipe</span>
+                <ExternalLink size={14} className="opacity-70" />
+              </a>
+            )}
+            {meal.ingredients && meal.ingredients.length > 0 && (
+              <a
+                href={`https://blinkit.com/s/?q=${encodeURIComponent(meal.ingredients.map(i => i.name).join(' '))}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-black rounded-lg text-sm font-medium transition-all shadow-md"
+              >
+                <ShoppingCart size={18} />
+                <span>Order on Blinkit</span>
+                <ExternalLink size={14} className="opacity-70" />
+              </a>
+            )}
+          </div>
 
           {/* Meal Nutrients */}
           <div className="grid grid-cols-4 gap-2 pt-2 border-t border-border/50">
@@ -707,6 +783,14 @@ const NutritionistView: React.FC = () => {
                       budget={budget}
                     />
                   )}
+                  {parsedPlan.meals.snacks && (
+                    <CollapsibleMealSection
+                      meal={parsedPlan.meals.snacks}
+                      mealType="snacks"
+                      dietType={dietType}
+                      budget={budget}
+                    />
+                  )}
                   {parsedPlan.meals.dinner && (
                     <CollapsibleMealSection
                       meal={parsedPlan.meals.dinner}
@@ -716,6 +800,47 @@ const NutritionistView: React.FC = () => {
                     />
                   )}
                 </div>
+
+                {/* Protein Boosters Section */}
+                {parsedPlan.proteinBoosters && parsedPlan.proteinBoosters.length > 0 && (
+                  <div className="bg-gradient-to-r from-rose-950/40 to-pink-950/40 rounded-xl p-5 border border-rose-800">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 bg-rose-600 rounded-lg flex items-center justify-center">
+                        <Flame className="text-white" size={20} />
+                      </div>
+                      <div>
+                        <h4 className="text-rose-300 font-bold">⚡ Protein Boosters</h4>
+                        <p className="text-xs text-muted-foreground">
+                          Target: {parsedPlan.proteinTarget}g | Current: {parsedPlan.totalMacros.protein}g
+                          <span className="text-rose-400 ml-2">(Gap: {Math.max(0, parsedPlan.proteinTarget - parsedPlan.totalMacros.protein)}g)</span>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {parsedPlan.proteinBoosters.map((booster, idx) => (
+                        <div key={idx} className="bg-card/50 rounded-lg p-4 border border-rose-900/50">
+                          <div className="flex items-start justify-between mb-2">
+                            <div>
+                              <h5 className="font-bold text-foreground">{booster.name}</h5>
+                              <p className="text-xs text-rose-400">+{booster.protein}g protein</p>
+                            </div>
+                            <span className="text-sm font-bold text-emerald-400">₹{booster.price}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mb-3">{booster.description}</p>
+                          <a
+                            href={booster.blinkit}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-black rounded-lg text-xs font-bold transition-all"
+                          >
+                            <ShoppingCart size={14} />
+                            <span>Order on Blinkit</span>
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Total Daily Cost */}
                 {parsedPlan.totalDailyCost > 0 && (
@@ -730,7 +855,7 @@ const NutritionistView: React.FC = () => {
                       </div>
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      Budget: ₹{budget} × 3 meals = ₹{budget * 3}
+                      Daily Budget: ₹{budget}
                     </div>
                   </div>
                 )}

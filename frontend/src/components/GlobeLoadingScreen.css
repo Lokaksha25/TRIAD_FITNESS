@@ -1,0 +1,210 @@
+.globe-loading-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 50%, #16213e 100%);
+  z-index: 9999;
+  animation: fadeIn 0.5s ease-out;
+}
+
+.globe-loading-screen.exiting {
+  animation: fadeOut 0.5s ease-in forwards;
+}
+
+.globe-container {
+  position: relative;
+  width: 100%;
+  max-width: 40rem;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 1.5rem;
+  padding: 2rem 3rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  background: rgba(23, 23, 23, 0.9);
+}
+
+/* Ambient glow effects */
+.ambient-glow {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(60px);
+}
+
+.ambient-glow-top {
+  top: -8rem;
+  right: -6rem;
+  height: 18rem;
+  width: 18rem;
+  background: rgba(34, 211, 238, 0.15);
+}
+
+.ambient-glow-bottom {
+  bottom: -10rem;
+  left: -8rem;
+  height: 20rem;
+  width: 20rem;
+  background: rgba(99, 102, 241, 0.15);
+}
+
+.globe-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.globe-title {
+  font-size: 2.5rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: #ffffff;
+  margin: 0;
+  background: linear-gradient(135deg, #ffffff 0%, #38bdf8 50%, #6366f1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.globe-subtitle {
+  margin-top: 1rem;
+  max-width: 28rem;
+  font-size: 1.125rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.globe-illustration {
+  margin-top: 2.5rem;
+  height: 16rem;
+  width: 16rem;
+  overflow: hidden;
+}
+
+.globe-svg {
+  height: 100%;
+  width: 100%;
+}
+
+/* Globe SVG elements */
+.globe-latitude {
+  fill: none;
+  stroke: url(#trailDim);
+  stroke-width: 1.2;
+  opacity: 0.8;
+  animation: flowAnimation 10s linear infinite;
+}
+
+.globe-longitude {
+  fill: none;
+  stroke: url(#trailDim);
+  stroke-width: 1.2;
+  opacity: 0.8;
+  animation: flowAnimationReverse 12s linear infinite;
+}
+
+.globe-orbit-bright {
+  fill: none;
+  stroke: url(#trailBright);
+  stroke-width: 3;
+  opacity: 1;
+  animation: flowAnimation 14s linear infinite;
+}
+
+.globe-orbit-dim {
+  fill: none;
+  stroke: url(#trailDim);
+  stroke-width: 2.5;
+  opacity: 0.9;
+  animation: flowAnimationReverse 9s linear infinite;
+}
+
+/* Loading dots */
+.loading-indicator {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 2rem;
+}
+
+.loading-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #38bdf8, #6366f1);
+  animation: dotPulse 1.4s ease-in-out infinite;
+}
+
+.loading-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.loading-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Keyframes */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes flowAnimation {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+
+@keyframes flowAnimationReverse {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 100;
+  }
+}
+
+@keyframes dotPulse {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Responsive */
+@media (min-width: 768px) {
+  .globe-container {
+    padding: 3rem;
+  }
+  
+  .globe-title {
+    font-size: 3rem;
+  }
+  
+  .globe-illustration {
+    height: 20rem;
+    width: 20rem;
+  }
+}

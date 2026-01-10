@@ -1,217 +1,198 @@
 import os
 import sys
 import json
-from groq import Groq
+import random
 from dotenv import load_dotenv
 
-# Add backend directory to path so we can import tools
+# Add backend directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from tools.memory_store import get_exercise_memory, save_agent_memory, format_exercise_context
+from tools.memory_store import save_agent_memory
 
 load_dotenv()
 
+# Protein booster products
+PROTEIN_BOOSTERS = [
+    {"name": "Boiled Eggs (6 pack)", "protein": 36, "price": 50, "blinkit": "https://blinkit.com/s/?q=eggs"},
+    {"name": "Greek Yogurt (High Protein)", "protein": 20, "price": 120, "blinkit": "https://blinkit.com/s/?q=greek%20yogurt"},
+    {"name": "Peanut Butter", "protein": 25, "price": 180, "blinkit": "https://blinkit.com/s/?q=peanut%20butter"},
+    {"name": "Protein Bar", "protein": 20, "price": 100, "blinkit": "https://blinkit.com/s/?q=protien%20bar"}
+]
+
 class NutritionistAgent:
     def __init__(self, data_loader, retriever):
-        self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
         self.retriever = retriever
         self.data_loader = data_loader
 
     def generate_plan(self, user_profile, wellness_data, fitness_coach_plan=None, user_id: str = "user_123"):
         
-        # 1. Fetch real exercise data from Pinecone (cross-agent memory)
-        exercise_memories = get_exercise_memory(
-            query=f"workout session for {user_profile.get('goal', 'general fitness')}",
-            top_k=3,
-            user_id=user_id
-        )
+        # 1. Determine Targets
+        goal = user_profile.get("goal", "General Health")
+        budget = user_profile.get("budget", 500)
         
-        # Format exercise context from Pinecone data
-        if exercise_memories:
-            fitness_coach_plan = format_exercise_context(exercise_memories)
-            print(f"✅ Retrieved {len(exercise_memories)} exercise records from Pinecone")
+        if 'Muscle' in goal or 'Gain' in goal:
+            protein_target = 150
+        elif 'Loss' in goal or 'Cut' in goal:
+            protein_target = 120
         else:
-            # Fallback if no exercise data in Pinecone
-            fitness_coach_plan = fitness_coach_plan or "No recent workout data available. Recommend balanced nutrition."
-            print("ℹ️ No exercise data found in Pinecone, using fallback")
+            protein_target = 100
         
-        # 2. Define Search Criteria based on inputs
+        # 2. Retrieve Data
         criteria = {
-            "diet_type": user_profile.get("diet_type"),
-            "budget": user_profile.get("budget"),
-            "goal": user_profile.get("goal")
+            "diet_type": user_profile.get("diet_type", "Vegetarian"),
+            "budget": budget,
+            "goal": goal
         }
-
-        # 2. Retrieve Relevant Foods
         retrieved_items = self.retriever.retrieve(criteria)
         
         if not retrieved_items:
-            return "⚠️ I couldn't find any foods matching your strict budget and diet constraints. Please increase the budget or switch diet types."
+            return json.dumps({"intro": "No suitable foods found.", "meals": {}, "totalDailyCost": 0})
 
-        # 3. Prepare Prompt for Llama-3-70b
-        # We serialize the retrieved items into JSON string
-        context_str = json.dumps(retrieved_items, indent=2)
+        # 3. Categorize by Meal Type
+        # We look for exact matches in the 'meal_type' column of the dataset
+        breakfast_pool = [m for m in retrieved_items if m.get('meal_type') == 'breakfast']
+        lunch_pool = [m for m in retrieved_items if m.get('meal_type') == 'lunch']
+        dinner_pool = [m for m in retrieved_items if m.get('meal_type') == 'dinner']
+        snack_pool = [m for m in retrieved_items if m.get('meal_type') == 'snack']
+        
+        # Fallback: If strict mapping fails, use the general pool but try to avoid duplicates
+        general_pool = retrieved_items.copy()
+        
+        # 4. Selection Logic (Enforce Variety)
+        used_names = set()
 
-        system_prompt = f"""You are an expert Indian Nutritionist Agent.
+        def select_meal(pool, fallback_pool, meal_name_debug):
+            selected = None
+            
+            # Try specific pool first (Unique)
+            for item in pool:
+                if item.get('name') not in used_names:
+                    selected = item
+                    break
+            
+            # Try fallback pool (Unique)
+            if not selected:
+                for item in fallback_pool:
+                    if item.get('name') not in used_names:
+                        selected = item
+                        break
+            
+            # Last Resort: Pick anything from specific pool (Duplicate allowed)
+            if not selected and pool:
+                selected = random.choice(pool)
+            
+            # Absolute Last Resort: Pick anything
+            if not selected and fallback_pool:
+                selected = random.choice(fallback_pool)
+                
+            if selected:
+                used_names.add(selected.get('name'))
+                
+            return selected
 
-**Your Role:**
-Analyze the user's goal, wellness data, and fitness plan to create a COMPLETE DAILY MEAL PLAN using the 'AVAILABLE_FOODS'.
-The plan must include THREE meals: Breakfast, Lunch, and Dinner.
+        breakfast = select_meal(breakfast_pool, general_pool, "Breakfast")
+        lunch = select_meal(lunch_pool, general_pool, "Lunch")
+        
+        # Smart Snack Selection: If no snack found, find low calorie item from general
+        if not snack_pool:
+            snack_pool = [m for m in general_pool if m.get('calories', 0) < 300]
+        snacks = select_meal(snack_pool, general_pool, "Snacks")
+        
+        dinner = select_meal(dinner_pool, general_pool, "Dinner")
 
-**STRICT DATA USAGE:**
-- Use ONLY items from the provided 'AVAILABLE_FOODS' JSON.
-- DO NOT invent dishes or prices.
-- Each meal should have 1 Main Dish + 1-2 Accompaniments.
-- Budget is PER MEAL, so each meal's totalCost must be within ₹{criteria['budget']}.
+        # 5. Build Response Helper
+        def format_meal(meal_data, type_label):
+            if not meal_data: return None
+            
+            # Handle JSON strings in dataset
+            def parse_json(field):
+                if isinstance(meal_data.get(field), str):
+                    try: return json.loads(meal_data[field])
+                    except: return []
+                return meal_data.get(field, [])
 
-**OUTPUT FORMAT:**
-You must output a SINGLE VALID JSON object. Do not include any markdown formatting (like ```json).
-The JSON must have this exact structure:
+            return {
+                "mealName": meal_data.get('name', 'Meal'),
+                "mainDish": {
+                    "name": meal_data.get('name'),
+                    "price": meal_data.get('price_inr', 0),
+                    "description": f"Best {type_label} option for {goal}",
+                    "type": "main"
+                },
+                "totalCost": meal_data.get('price_inr', 0),
+                "nutrients": {
+                    "protein": meal_data.get('protein', 0),
+                    "carbs": meal_data.get('carbs', 0),
+                    "fat": meal_data.get('fats', 0),
+                    "calories": meal_data.get('calories', 0)
+                },
+                "recipe": parse_json('recipe'),
+                "ingredients": parse_json('ingredients'),
+                "youtubeLink": meal_data.get('youtube_link', '')
+            }
 
-{{
-  "intro": "Brief explanation of why this daily plan fits the goal/sleep/workout data...",
-  "meals": {{
-    "breakfast": {{
-      "mealName": "Energizing Morning Start",
-      "mainDish": {{
-        "name": "Exact Name from Data",
-        "price": 80,
-        "description": "Why this main dish is chosen for breakfast...",
-        "type": "main"
-      }},
-      "accompaniments": [
-        {{
-          "name": "Exact Name from Data",
-          "price": 20,
-          "description": "Why this side...",
-          "type": "accompaniment"
-        }}
-      ],
-      "totalCost": 100,
-      "nutrients": {{
-        "protein": 15,
-        "carbs": 45,
-        "fat": 8,
-        "calories": 320
-      }}
-    }},
-    "lunch": {{
-      "mealName": "Power Lunch",
-      "mainDish": {{
-        "name": "Exact Name from Data",
-        "price": 120,
-        "description": "Why this main dish is chosen for lunch...",
-        "type": "main"
-      }},
-      "accompaniments": [
-        {{
-          "name": "Exact Name from Data",
-          "price": 30,
-          "description": "Why this side...",
-          "type": "accompaniment"
-        }}
-      ],
-      "totalCost": 150,
-      "nutrients": {{
-        "protein": 30,
-        "carbs": 60,
-        "fat": 15,
-        "calories": 500
-      }}
-    }},
-    "dinner": {{
-      "mealName": "Recovery Dinner",
-      "mainDish": {{
-        "name": "Exact Name from Data",
-        "price": 100,
-        "description": "Why this main dish is chosen for dinner...",
-        "type": "main"
-      }},
-      "accompaniments": [
-        {{
-          "name": "Exact Name from Data",
-          "price": 25,
-          "description": "Why this side...",
-          "type": "accompaniment"
-        }}
-      ],
-      "totalCost": 125,
-      "nutrients": {{
-        "protein": 25,
-        "carbs": 40,
-        "fat": 12,
-        "calories": 380
-      }}
-    }}
-  }},
-  "totalMacros": {{
-    "protein": 70,
-    "carbs": 145,
-    "fat": 35,
-    "calories": 1200
-  }},
-  "totalDailyCost": 375,
-  "whyItWorks": "Conclusion summarizing how the full day plan supports the user's goals..."
-}}
-"""
+        final_plan = {
+            "breakfast": format_meal(breakfast, 'breakfast'),
+            "lunch": format_meal(lunch, 'lunch'),
+            "snacks": format_meal(snacks, 'snacks'),
+            "dinner": format_meal(dinner, 'dinner')
+        }
 
-        user_message = f"""**User Profile:**
-- Goal: {user_profile['goal']}
-- Diet: {user_profile.get('diet_type', 'Vegetarian')}
-- Budget: ₹{user_profile['budget']}
+        # 6. Calculate Totals & Boosters
+        valid_meals = [m for m in final_plan.values() if m]
+        total_protein = sum(m['nutrients']['protein'] for m in valid_meals)
+        # Base daily cost is just the fresh meals
+        total_cost = sum(m['totalCost'] for m in valid_meals)
+        total_cals = sum(m['nutrients']['calories'] for m in valid_meals)
 
-**Wellness Data:**
-{json.dumps(wellness_data)}
+        protein_gap = protein_target - total_protein
+        boosters_needed = []
+        
+        if protein_gap > 5: # Only suggest if gap is significant
+            for booster in PROTEIN_BOOSTERS:
+                if protein_gap <= 0: break
+                
+                # Add booster
+                boosters_needed.append(booster)
+                protein_gap -= booster['protein']
+                
+                # Update Cost Logic:
+                # ONLY add cost for fresh daily items (Eggs, Yogurt).
+                # Exclude bulk items (Peanut Butter, Protein Bars) from DAILY cost tally.
+                if "Eggs" in booster['name'] or "Yogurt" in booster['name']:
+                    total_cost += booster['price']
+                # Peanut Butter/Bars are one-time purchases, so we don't add to daily sum
 
-**Fitness Plan:**
-"{fitness_coach_plan}"
+        # Detailed Explanation Generation
+        explanation = f"This plan is designed for {goal}. "
+        if 'Muscle' in goal or 'Gain' in goal:
+            explanation += f"It prioritizes high protein ({total_protein}g) to support muscle hypertrophy while providing {total_cals} kcals for energy. "
+        elif 'Loss' in goal or 'Cut' in goal:
+            explanation += f"It maintains a calorie deficit ({total_cals} kcals) for fat loss while keeping protein high ({total_protein}g) to preserve lean muscle. "
+        else:
+            explanation += f"It provides a balanced macro split ({total_protein}g Protein) for sustained energy and overall wellness. "
+            
+        explanation += "Carbs and Fats are balanced to ensure satiety and hormonal health."
 
-**AVAILABLE_FOODS (Select from here):**
-{context_str}
-"""
+        result = {
+            "intro": f"Here is your optimized nutrition plan for {goal}.",
+            "meals": final_plan,
+            "totalMacros": {
+                "protein": total_protein,
+                "carbs": sum(m['nutrients']['carbs'] for m in valid_meals),
+                "fat": sum(m['nutrients']['fat'] for m in valid_meals),
+                "calories": total_cals
+            },
+            "proteinTarget": protein_target,
+            "totalDailyCost": total_cost,
+            "proteinBoosters": boosters_needed,
+            "whyItWorks": explanation
+        }
 
+        # Memory Save (Safe Wrap)
         try:
-            chat_completion = self.client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message}
-                ],
-                # Using a model capable of good JSON generation
-                model="llama-3.1-8b-instant",
-                temperature=0.3, # Lower temperature for consistency
-                max_tokens=1000,
-                response_format={"type": "json_object"} # Enforce JSON mode if supported, or via prompt
-            )
-            result_text = chat_completion.choices[0].message.content
-            
-            # Save nutrition plan to Pinecone for cross-agent memory
-            try:
-                log_id = save_agent_memory(
-                    agent_type="nutritionist",
-                    content=str(result_text)[:1000], # Save JSON string or summary
-                    metadata={
-                        "goal": user_profile.get('goal', ''),
-                        "diet_type": user_profile.get('diet_type', ''),
-                        "budget": user_profile.get('budget', 0)
-                    },
-                    user_id=user_id
-                )
-                print(f"✅ Saved nutrition plan to Pinecone: {log_id}")
-            except Exception as save_err:
-                print(f"⚠️ Failed to save nutrition plan to Pinecone: {save_err}")
-            
-            return result_text
-            
-        except Exception as e:
-            # Log the full error for debugging
-            print(f"❌ Nutritionist Agent Error: {type(e).__name__}: {str(e)[:500]}")
-            
-            return json.dumps({
-                "intro": "Unable to generate meal plan. Please try again.",
-                "mainDish": {"name": "Error", "price": 0, "description": "The AI service encountered an issue.", "type": "main"},
-                "accompaniments": [],
-                "totalCost": 0,
-                "nutrients": {"protein": {"total": 0, "breakdown": ""}, "calcium": {"total": 0, "breakdown": ""}, "iron": {"total": 0, "breakdown": ""}},
-                "whyItWorks": f"Error: {type(e).__name__}"
-            })
+             save_agent_memory("nutritionist", f"Plan: {total_cals}kcal", result, user_id)
+        except: pass
+        
+        return json.dumps(result)
