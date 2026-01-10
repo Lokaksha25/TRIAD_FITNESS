@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -22,6 +22,16 @@ interface NavItem {
 const Sidebar: React.FC = () => {
     const [isExpanded, setIsExpanded] = useState(false);
     const { currentUser, logout } = useAuth();
+    const navigate = useNavigate();
+
+    const handleLogout = async () => {
+        try {
+            await logout();
+            navigate('/auth');
+        } catch (error) {
+            console.error('Logout failed:', error);
+        }
+    };
 
     // Get user display info from Firebase auth
     const displayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
@@ -178,7 +188,7 @@ const Sidebar: React.FC = () => {
                                 animate={{ opacity: 1, scale: 1 }}
                                 exit={{ opacity: 0, scale: 0.8 }}
                                 transition={{ duration: 0.2 }}
-                                onClick={logout}
+                                onClick={handleLogout}
                                 className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0"
                                 title="Logout"
                             >

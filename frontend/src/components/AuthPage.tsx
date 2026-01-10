@@ -27,7 +27,7 @@ const AuthPage: React.FC = () => {
         setError(null);
         try {
             await signInWithGoogle();
-            navigate('/chat');
+            navigate('/dashboard');
         } catch (err: any) {
             setError('Failed to sign in with Google. Please try again.');
             console.error(err);
@@ -43,7 +43,7 @@ const AuthPage: React.FC = () => {
 
         try {
             await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
-            navigate('/chat');
+            navigate('/dashboard');
         } catch (err: any) {
             console.error("Login Error:", err);
             // Firebase error codes
